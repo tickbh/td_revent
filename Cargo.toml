@@ -1,0 +1,14 @@
+[package]
+name = "event"
+version = "0.1.0"
+authors = ["wgd <wgd@qq.com>"]
+
+[dependencies]
+libc = "*"
+num = "*"
+time = "0.1.31"
+bitflags = "0.3"
+
+[[test]]
+name = "test"
+path = "test/test.rs"
