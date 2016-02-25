@@ -16,8 +16,10 @@ Then, add this to your crate root:
 
 ```rust
 extern crate td_revent;
-Add empty event just do
+```
 
+Add empty event just do
+```rust
 extern crate td_revent;
 use td_revent::EventLoop;
 
