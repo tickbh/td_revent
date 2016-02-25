@@ -49,9 +49,10 @@ pub fn main() {
 }
 ```
 ##Features
-*Event loop backed by epoll, windows by select.
-*Non-blocking TCP sockets
-*High performance timer system
+
+Event loop backed by epoll, windows by select.
+Non-blocking TCP sockets
+High performance timer system
 
 ##Platforms
 Currently, td_revent only supports Linux and Windows. The goal is to support all platforms that support Rust and the readiness IO model.
