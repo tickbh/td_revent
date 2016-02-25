@@ -54,7 +54,7 @@ type BuffLen = size_t;
 macro_rules! _try {
     ( $fun:ident, $( $x:expr ),* ) => {{
         let value = unsafe { $fun($($x,)*) };
-        if value == -1 {
+        if value as i32 == -1 {
             return Err(Error::last_os_error());
         }
         value

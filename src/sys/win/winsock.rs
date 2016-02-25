@@ -13,7 +13,6 @@
 
 use std::sync::{Once, ONCE_INIT};
 use std::mem;
-use std::rt;
 
 use libc;
 use libc::{c_uint, c_ulong};
@@ -500,6 +499,6 @@ pub fn init() {
                                 &mut data);
         assert_eq!(ret, 0);
 
-       let _ = rt::at_exit(|| { WSACleanup(); });
+       // let _ = rt::at_exit(|| { WSACleanup(); });
     });
 }

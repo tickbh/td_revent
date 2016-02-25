@@ -1,10 +1,3 @@
-#![feature(collections)]
-#![feature(const_fn)]
-#![feature(box_raw)]
-#![feature(negate_unsigned)]
-#![feature(box_syntax)]
-#![feature(rt)]
-
 #[macro_use]
 extern crate bitflags;
 

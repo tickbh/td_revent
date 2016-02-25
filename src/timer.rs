@@ -43,7 +43,7 @@ impl Timer {
 				data.push(entry);
 			}
 		}
-		self.timer_queue = BinaryHeap::from_vec(data);
+		self.timer_queue = BinaryHeap::from(data);
 
 	}
 
