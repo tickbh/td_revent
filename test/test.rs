@@ -1,4 +1,4 @@
-extern crate event;
+extern crate td_revent;
 
 pub use test::localhost;
 mod test_timer;

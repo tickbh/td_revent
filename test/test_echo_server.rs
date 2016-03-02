@@ -1,6 +1,6 @@
-extern crate event;
-use event::*;
-use event::sys::*;
+extern crate td_revent;
+use td_revent::*;
+use td_revent::sys::*;
 use std::collections::HashMap;
 
 extern crate libc;

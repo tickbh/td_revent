@@ -1,11 +1,11 @@
 [package]
-name = "event"
+name = "td_revent"
 version = "0.1.0"
 authors = ["wgd <wgd@qq.com>"]
 
 [dependencies]
 libc = "*"
-num = "*"
+num = "0.1.31"
 time = "0.1.31"
 bitflags = "0.3"
 

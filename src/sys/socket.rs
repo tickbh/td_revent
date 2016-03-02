@@ -9,7 +9,7 @@ extern crate num;
 #[cfg(windows)]
 use super::win::winsock;
 
-pub use libc::{
+use libc::{
     AF_INET, AF_INET6, SOCK_STREAM, SOCK_DGRAM, SOCK_RAW,
     IPPROTO_IP, IPPROTO_IPV6, IPPROTO_TCP, TCP_NODELAY,
     SOL_SOCKET, SO_KEEPALIVE, SO_ERROR,
