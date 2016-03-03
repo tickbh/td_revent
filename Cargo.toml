@@ -1,13 +1,16 @@
 [package]
 name = "td_revent"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["wgd <wgd@qq.com>"]
 
 [dependencies]
-libc = "*"
-num = "0.1.31"
-time = "0.1.31"
+libc   = "0.2.4"
+time   = "0.1.33"
 bitflags = "0.3"
+winapi = "0.2"
+ws2_32-sys = "0.2"
+net2   = { version = "0.2.19", default-features = false }
+
 
 [[test]]
 name = "test"
