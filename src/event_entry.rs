@@ -1,5 +1,3 @@
-#![allow(raw_pointer_derive)]
-
 pub use {EventFlags, FLAG_TIMEOUT, FLAG_READ, FLAG_WRITE, FLAG_PERSIST, EventLoop};
 use std::fmt;
 use std::ptr;
@@ -8,18 +6,30 @@ use std::hash::{Hash, Hasher};
 use std::hash;
 extern crate time;
 
-#[derive( Clone )]
 pub struct EventEntry {
     pub ev_fd : u64,
     pub tick_ms : u64,
     pub tick_step : u64,
     pub ev_events : EventFlags,
-    pub call_back : Option<fn(ev : *mut EventLoop, fd : u64, flag : EventFlags, data : *mut ()) -> i32>,
+    pub call_back : Option<fn(ev : &mut EventLoop, fd : u64, flag : EventFlags, data : *mut ()) -> i32>,
     pub data : Option<*mut ()>,
 }
 
+impl Clone for EventEntry {
+    fn clone(&self) -> Self {
+        EventEntry {
+            ev_fd : self.ev_fd,
+            tick_ms : self.tick_ms,
+            tick_step : self.tick_step,
+            ev_events : self.ev_events,
+            call_back : self.call_back,
+            data : self.data,
+        }
+    }
+}
+
 impl EventEntry {
-	pub fn new_timer(tick_step : u64, tick_repeat : bool, call_back : Option<fn(ev : *mut EventLoop, fd : u64, flag : EventFlags, data : *mut ()) -> i32>, data : Option<*mut ()>) -> EventEntry {
+	pub fn new_timer(tick_step : u64, tick_repeat : bool, call_back : Option<fn(ev : &mut EventLoop, fd : u64, flag : EventFlags, data : *mut ()) -> i32>, data : Option<*mut ()>) -> EventEntry {
 		EventEntry {
 			tick_ms : time::precise_time_ns() / 1000_000 + tick_step,
 			tick_step : tick_step,
@@ -30,7 +40,7 @@ impl EventEntry {
 		}
 	}
 
-	pub fn new(ev_fd : u64, ev_events : EventFlags, call_back : Option<fn(ev : *mut EventLoop, fd : u64, flag : EventFlags, data : *mut ()) -> i32>, data : Option<*mut ()>) -> EventEntry {
+	pub fn new(ev_fd : u64, ev_events : EventFlags, call_back : Option<fn(ev : &mut EventLoop, fd : u64, flag : EventFlags, data : *mut ()) -> i32>, data : Option<*mut ()>) -> EventEntry {
 		EventEntry {
 			tick_ms : 0,
 			tick_step : 0,
@@ -52,7 +62,7 @@ impl EventEntry {
         }
     }
 
-    pub fn callback(&self, ev : *mut EventLoop, ev_events : EventFlags) -> i32 {
+    pub fn callback(&self, ev : &mut EventLoop, ev_events : EventFlags) -> i32 {
         if self.call_back.is_none() {
             return 0;
         }

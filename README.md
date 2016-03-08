@@ -35,7 +35,7 @@ extern crate td_revent;
 use td_revent::{EventLoop, EventEntry, EventFlags};
 use std::ptr;
 
-fn time_callback(ev : *mut EventLoop, fd : u64, _ : EventFlags, data : *mut ()) -> i32 {
+fn time_callback(ev : &mut EventLoop, fd : u64, _ : EventFlags, data : *mut ()) -> i32 {
     println!("fd is {:?}", fd);
     //return 0 status ok other will delete the timer
     0

@@ -2,7 +2,6 @@ extern crate td_revent;
 extern crate net2;
 use td_revent::*;
 use std::io::prelude::*;
-use std::collections::HashMap;
 use std::mem;
 use std::net::{TcpStream, TcpListener};
 
@@ -13,7 +12,7 @@ struct SocketManger {
 
 static mut s_count : i32 = 0; 
 
-fn client_read_callback(ev : *mut EventLoop, fd : u64, _ : EventFlags, data : *mut()) -> i32 {
+fn client_read_callback(ev : &mut EventLoop, _fd : u64, _ : EventFlags, data : *mut()) -> i32 {
     let sock_mgr : &mut SocketManger = unsafe { &mut *(data as *mut SocketManger) };
     println!("{:?}", sock_mgr.client);
     let mut data : [u8; 1024] = [0; 1024];
@@ -26,8 +25,7 @@ fn client_read_callback(ev : *mut EventLoop, fd : u64, _ : EventFlags, data : *m
 
     println!("size = {:?}", size);
     if size <= 0 {
-        let el : &mut EventLoop = unsafe { &mut *ev };
-        el.del_event(sock_mgr.client.as_fd() as u64, FLAG_READ | FLAG_WRITE);
+        ev.del_event(sock_mgr.client.as_fd() as u64, FLAG_READ | FLAG_WRITE);
         // drop(sock_mgr.client);
         return 0;
     }
@@ -38,8 +36,7 @@ fn client_read_callback(ev : *mut EventLoop, fd : u64, _ : EventFlags, data : *m
 
     if count >= 6 {
         println!("client close the socket");
-        let el : &mut EventLoop = unsafe { &mut *ev };
-        el.del_event(sock_mgr.client.as_fd() as u64, FLAG_READ | FLAG_WRITE);
+        ev.del_event(sock_mgr.client.as_fd() as u64, FLAG_READ | FLAG_WRITE);
         drop(TcpStream::from_fd(sock_mgr.client.as_fd() as i32));
         return 0;
     } else {
@@ -50,9 +47,8 @@ fn client_read_callback(ev : *mut EventLoop, fd : u64, _ : EventFlags, data : *m
     0
 }
 
-fn server_read_callback(ev : *mut EventLoop, fd : u64, _ : EventFlags, data : *mut()) -> i32 {
+fn server_read_callback(ev : &mut EventLoop, fd : u64, _ : EventFlags, _data : *mut()) -> i32 {
     println!("server_read_callback");
-    let sock_mgr : &mut SocketManger = unsafe { &mut *(data as *mut SocketManger) };
     let mut socket = TcpStream::from_fd(fd as i32);
 
     println!("{:?}", socket);
@@ -69,8 +65,7 @@ fn server_read_callback(ev : *mut EventLoop, fd : u64, _ : EventFlags, data : *m
 
     if size <= 0 {
         drop(socket);
-        let el : &mut EventLoop = unsafe { &mut *ev };
-        el.shutdown();
+        ev.shutdown();
         return 0;
     }
     let str = String::from_utf8_lossy(&data[0..size]);
@@ -81,15 +76,14 @@ fn server_read_callback(ev : *mut EventLoop, fd : u64, _ : EventFlags, data : *m
     0
 }
 
-fn accept_callback(ev : *mut EventLoop, fd : u64, _ : EventFlags, data : *mut ()) -> i32 {
+fn accept_callback(ev : &mut EventLoop, _fd : u64, _ : EventFlags, data : *mut ()) -> i32 {
     let sock_mgr : &mut SocketManger = unsafe { &mut *(data as *mut SocketManger) };
 
     let (new_socket, new_attr) = sock_mgr.listener.accept().unwrap();
-    net2::TcpStreamExt::set_nonblocking(&new_socket, false);
+    let _ = net2::TcpStreamExt::set_nonblocking(&new_socket, false);
 
     println!("{:?} attr is {:?}", new_socket, new_attr);
-    let el : &mut EventLoop = unsafe { &mut *ev };
-    el.add_event(EventEntry::new(new_socket.as_fd() as u64, FLAG_READ, Some(server_read_callback), Some(data)));
+    ev.add_event(EventEntry::new(new_socket.as_fd() as u64, FLAG_READ, Some(server_read_callback), Some(data)));
     mem::forget(new_socket);
     0
 }
@@ -101,10 +95,10 @@ pub fn test_base_echo() {
 
     let addr = "127.0.0.1:10009";
     let listener = TcpListener::bind(&addr).unwrap();
-    net2::TcpListenerExt::set_nonblocking(&listener, false);
+    let _ = net2::TcpListenerExt::set_nonblocking(&listener, false);
 
-    let mut client = TcpStream::connect(&addr).unwrap();
-    net2::TcpStreamExt::set_nonblocking(&client, false);
+    let client = TcpStream::connect(&addr).unwrap();
+    let _ = net2::TcpStreamExt::set_nonblocking(&client, false);
 
     let mut sock_mgr = SocketManger { listener : listener, client : client };
     event_loop.add_event(EventEntry::new(sock_mgr.listener.as_fd() as u64, FLAG_READ, Some(accept_callback), Some(&sock_mgr as *const _ as *mut ())));

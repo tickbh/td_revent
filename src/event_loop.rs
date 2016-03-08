@@ -42,18 +42,18 @@ pub struct EventLoop {
 }
 
 
+static mut el : *mut EventLoop = 0 as *mut _;
 
 impl EventLoop {
 
-    pub fn instance() -> *mut EventLoop {
-        static mut el : *mut EventLoop = 0 as *mut _;
+
+    pub fn instance() -> &'static mut EventLoop {
         unsafe {
             if el == 0 as *mut _ {
                 el = Box::into_raw(Box::new(EventLoop::new().unwrap()));
             }
-            el
+            &mut *el
         }
-
     }
 
     pub fn new() -> io::Result<EventLoop> {
