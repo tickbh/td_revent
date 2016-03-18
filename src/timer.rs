@@ -31,9 +31,10 @@ impl Timer {
 		if entry.ev_fd == 0 {
 			entry.ev_fd = self.calc_new_id();	
 		};
+		let time_id = entry.ev_fd;
 		entry.tick_ms = time::precise_time_ns() / 1000_000 + entry.tick_step;
 		self.timer_queue.push(entry);
-		self.time_id
+		time_id
 	}
 
 	pub fn del_timer(&mut self, time_id : u32) -> Option<EventEntry> {
