@@ -36,15 +36,18 @@ impl Timer {
 		self.time_id
 	}
 
-	pub fn del_timer(&mut self, time_id : u32) {
+	pub fn del_timer(&mut self, time_id : u32) -> Option<EventEntry> {
+		let mut ret : Option<EventEntry> = None;
 		let mut data = Vec::new();
 		while let Some(entry) = self.timer_queue.pop() {
 			if entry.ev_fd != time_id {
 				data.push(entry);
+			} else {
+				ret = Some(entry);
 			}
 		}
 		self.timer_queue = BinaryHeap::from(data);
-
+		ret
 	}
 
 	pub fn tick_first(&self) -> Option<u64> {

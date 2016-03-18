@@ -119,8 +119,8 @@ impl EventLoop {
         self.timer.add_timer(entry)
     }
 
-    pub fn del_timer(&mut self, time_id : u32) {
-        self.timer.del_timer(time_id);
+    pub fn del_timer(&mut self, time_id : u32) -> Option<EventEntry> {
+        self.timer.del_timer(time_id)
     }
 
     pub fn add_event(&mut self, entry : EventEntry) {
