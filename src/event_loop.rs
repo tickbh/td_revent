@@ -38,7 +38,7 @@ pub struct EventLoop {
     selector : Selector,
     config: EventLoopConfig,
     evts : Vec<EventEntry>, 
-    event_maps : HashMap<u64, EventEntry>,
+    event_maps : HashMap<u32, EventEntry>,
 }
 
 
@@ -115,11 +115,11 @@ impl EventLoop {
         Ok(())
     }
 
-    pub fn add_timer(&mut self, entry : EventEntry) -> u64 {
+    pub fn add_timer(&mut self, entry : EventEntry) -> u32 {
         self.timer.add_timer(entry)
     }
 
-    pub fn del_timer(&mut self, time_id : u64) {
+    pub fn del_timer(&mut self, time_id : u32) {
         self.timer.del_timer(time_id);
     }
 
@@ -129,7 +129,7 @@ impl EventLoop {
         self.event_maps.insert(entry.ev_fd, entry);
     }
 
-    pub fn del_event(&mut self, ev_fd : u64, ev_events : EventFlags) {
+    pub fn del_event(&mut self, ev_fd : u32, ev_events : EventFlags) {
         let _ = self.selector.deregister(ev_fd, ev_events);
         self.event_maps.remove(&ev_fd);
     }

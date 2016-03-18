@@ -9,13 +9,13 @@ use std::net::{TcpStream, TcpListener};
 extern crate libc;
 
 struct SocketManger {
-    pub listener : HashMap<u64, TcpListener>,
-    pub clients : HashMap<u64, TcpStream>,
+    pub listener : HashMap<u32, TcpListener>,
+    pub clients : HashMap<u32, TcpStream>,
 }
 
 static mut s_count : i32 = 0; 
 
-fn client_read_callback(ev : &mut EventLoop, fd : u64, _ : EventFlags, data : *mut()) -> i32 {
+fn client_read_callback(ev : &mut EventLoop, fd : u32, _ : EventFlags, data : *mut()) -> i32 {
     let sock_mgr : &mut SocketManger = unsafe { &mut *(data as *mut SocketManger) };
     let mut socket = sock_mgr.clients.remove(&fd).unwrap();
     println!("{:?}", socket);
@@ -27,7 +27,7 @@ fn client_read_callback(ev : &mut EventLoop, fd : u64, _ : EventFlags, data : *m
         },
     };
     if size <= 0 {
-        ev.del_event(socket.as_fd() as u64, FLAG_READ | FLAG_WRITE);
+        ev.del_event(socket.as_fd() as u32, FLAG_READ | FLAG_WRITE);
         drop(socket);
         return 0;
     }
@@ -39,7 +39,7 @@ fn client_read_callback(ev : &mut EventLoop, fd : u64, _ : EventFlags, data : *m
     if count >= 6 {
         // panic!("close socket received count is {}", count);
         println!("client close the socket");
-        ev.del_event(socket.as_fd() as u64, FLAG_READ | FLAG_WRITE);
+        ev.del_event(socket.as_fd() as u32, FLAG_READ | FLAG_WRITE);
         drop(socket);
         return 0;
     } else {
@@ -51,7 +51,7 @@ fn client_read_callback(ev : &mut EventLoop, fd : u64, _ : EventFlags, data : *m
     0
 }
 
-fn server_read_callback(ev : &mut EventLoop, fd : u64, _ : EventFlags, data : *mut()) -> i32 {
+fn server_read_callback(ev : &mut EventLoop, fd : u32, _ : EventFlags, data : *mut()) -> i32 {
     println!("server_read_callback");
     let sock_mgr : &mut SocketManger = unsafe { &mut *(data as *mut SocketManger) };
     let mut socket = sock_mgr.clients.remove(&fd).unwrap();
@@ -79,7 +79,7 @@ fn server_read_callback(ev : &mut EventLoop, fd : u64, _ : EventFlags, data : *m
     0
 }
 
-fn accept_callback(ev : &mut EventLoop, fd : u64, _ : EventFlags, data : *mut ()) -> i32 {
+fn accept_callback(ev : &mut EventLoop, fd : u32, _ : EventFlags, data : *mut ()) -> i32 {
     let sock_mgr : &mut SocketManger = unsafe { &mut *(data as *mut SocketManger) };
     let listener = sock_mgr.listener.remove(&fd).unwrap();
 
@@ -88,8 +88,8 @@ fn accept_callback(ev : &mut EventLoop, fd : u64, _ : EventFlags, data : *mut ()
     sock_mgr.listener.insert(fd, listener);
 
     println!("{:?} attr is {:?}", new_socket, new_attr);
-    ev.add_event(EventEntry::new(new_socket.as_fd() as u64, FLAG_READ, Some(server_read_callback), Some(data)));
-    sock_mgr.clients.insert(new_socket.as_fd() as u64, new_socket);
+    ev.add_event(EventEntry::new(new_socket.as_fd() as u32, FLAG_READ, Some(server_read_callback), Some(data)));
+    sock_mgr.clients.insert(new_socket.as_fd() as u32, new_socket);
     0
 }
 
@@ -102,17 +102,17 @@ pub fn test_echo_server() {
     let addr = "127.0.0.1:1009";
     let listener = TcpListener::bind(&addr).unwrap();
     let _ = net2::TcpListenerExt::set_nonblocking(&listener, false);
-    event_loop.add_event(EventEntry::new(listener.as_fd() as u64, FLAG_READ, Some(accept_callback), Some(&sock_mgr as *const _ as *mut ())));
+    event_loop.add_event(EventEntry::new(listener.as_fd() as u32, FLAG_READ, Some(accept_callback), Some(&sock_mgr as *const _ as *mut ())));
 
     let mut stream = TcpStream::connect(&addr).unwrap();
     let _ = net2::TcpStreamExt::set_nonblocking(&stream, false);
 
     // stream.write(&format!("hello world")[..]).unwrap();
     stream.write(b"hello world").unwrap();
-    event_loop.add_event(EventEntry::new(stream.as_fd() as u64, FLAG_READ, Some(client_read_callback), Some(&sock_mgr as *const _ as *mut ())));
+    event_loop.add_event(EventEntry::new(stream.as_fd() as u32, FLAG_READ, Some(client_read_callback), Some(&sock_mgr as *const _ as *mut ())));
 
-    sock_mgr.listener.insert(listener.as_fd() as u64, listener);
-    sock_mgr.clients.insert(stream.as_fd() as u64, stream);
+    sock_mgr.listener.insert(listener.as_fd() as u32, listener);
+    sock_mgr.clients.insert(stream.as_fd() as u32, stream);
     // mem::forget(listener);
     // mem::forget(stream);
     event_loop.run().unwrap();

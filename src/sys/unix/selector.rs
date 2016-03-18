@@ -64,18 +64,18 @@ impl Selector {
         Ok(cnt as u32)
     }
 
-    pub fn register(&mut self, fd : u64, ev_events : EventFlags) -> io::Result<()>  {
+    pub fn register(&mut self, fd : u32, ev_events : EventFlags) -> io::Result<()>  {
 
         let info = EpollEvent {
             events: ioevent_to_epoll(ev_events),
-            data: fd as u64
+            data: fd as u32
         };
 
         epoll_ctl(self.epfd, EpollOp::EpollCtlAdd, fd as i32, &info)
             .map_err(from_sys_error)
     }
 
-    pub fn deregister(&mut self, fd : u64, _ev_events : EventFlags) -> io::Result<()>  {
+    pub fn deregister(&mut self, fd : u32, _ev_events : EventFlags) -> io::Result<()>  {
         let info = EpollEvent {
             events: EpollEventKind::empty(),
             data: 0

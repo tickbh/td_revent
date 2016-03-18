@@ -7,11 +7,11 @@ use std::hash;
 extern crate time;
 
 pub struct EventEntry {
-    pub ev_fd : u64,
+    pub ev_fd : u32,
     pub tick_ms : u64,
     pub tick_step : u64,
     pub ev_events : EventFlags,
-    pub call_back : Option<fn(ev : &mut EventLoop, fd : u64, flag : EventFlags, data : *mut ()) -> i32>,
+    pub call_back : Option<fn(ev : &mut EventLoop, fd : u32, flag : EventFlags, data : *mut ()) -> i32>,
     pub data : Option<*mut ()>,
 }
 
@@ -29,7 +29,7 @@ impl Clone for EventEntry {
 }
 
 impl EventEntry {
-	pub fn new_timer(tick_step : u64, tick_repeat : bool, call_back : Option<fn(ev : &mut EventLoop, fd : u64, flag : EventFlags, data : *mut ()) -> i32>, data : Option<*mut ()>) -> EventEntry {
+	pub fn new_timer(tick_step : u64, tick_repeat : bool, call_back : Option<fn(ev : &mut EventLoop, fd : u32, flag : EventFlags, data : *mut ()) -> i32>, data : Option<*mut ()>) -> EventEntry {
 		EventEntry {
 			tick_ms : time::precise_time_ns() / 1000_000 + tick_step,
 			tick_step : tick_step,
@@ -40,7 +40,7 @@ impl EventEntry {
 		}
 	}
 
-	pub fn new(ev_fd : u64, ev_events : EventFlags, call_back : Option<fn(ev : &mut EventLoop, fd : u64, flag : EventFlags, data : *mut ()) -> i32>, data : Option<*mut ()>) -> EventEntry {
+	pub fn new(ev_fd : u32, ev_events : EventFlags, call_back : Option<fn(ev : &mut EventLoop, fd : u32, flag : EventFlags, data : *mut ()) -> i32>, data : Option<*mut ()>) -> EventEntry {
 		EventEntry {
 			tick_ms : 0,
 			tick_step : 0,
@@ -51,7 +51,7 @@ impl EventEntry {
 		}
 	}
 
-    pub fn new_evfd(ev_fd : u64, ev_events : EventFlags) -> EventEntry  {
+    pub fn new_evfd(ev_fd : u32, ev_events : EventFlags) -> EventEntry  {
         EventEntry {
             tick_ms : 0,
             tick_step : 0,

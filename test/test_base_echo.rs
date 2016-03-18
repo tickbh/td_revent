@@ -12,7 +12,7 @@ struct SocketManger {
 
 static mut s_count : i32 = 0; 
 
-fn client_read_callback(ev : &mut EventLoop, _fd : u64, _ : EventFlags, data : *mut()) -> i32 {
+fn client_read_callback(ev : &mut EventLoop, _fd : u32, _ : EventFlags, data : *mut()) -> i32 {
     let sock_mgr : &mut SocketManger = unsafe { &mut *(data as *mut SocketManger) };
     println!("{:?}", sock_mgr.client);
     let mut data : [u8; 1024] = [0; 1024];
@@ -25,7 +25,7 @@ fn client_read_callback(ev : &mut EventLoop, _fd : u64, _ : EventFlags, data : *
 
     println!("size = {:?}", size);
     if size <= 0 {
-        ev.del_event(sock_mgr.client.as_fd() as u64, FLAG_READ | FLAG_WRITE);
+        ev.del_event(sock_mgr.client.as_fd() as u32, FLAG_READ | FLAG_WRITE);
         // drop(sock_mgr.client);
         return 0;
     }
@@ -36,7 +36,7 @@ fn client_read_callback(ev : &mut EventLoop, _fd : u64, _ : EventFlags, data : *
 
     if count >= 6 {
         println!("client close the socket");
-        ev.del_event(sock_mgr.client.as_fd() as u64, FLAG_READ | FLAG_WRITE);
+        ev.del_event(sock_mgr.client.as_fd() as u32, FLAG_READ | FLAG_WRITE);
         drop(TcpStream::from_fd(sock_mgr.client.as_fd() as i32));
         return 0;
     } else {
@@ -47,7 +47,7 @@ fn client_read_callback(ev : &mut EventLoop, _fd : u64, _ : EventFlags, data : *
     0
 }
 
-fn server_read_callback(ev : &mut EventLoop, fd : u64, _ : EventFlags, _data : *mut()) -> i32 {
+fn server_read_callback(ev : &mut EventLoop, fd : u32, _ : EventFlags, _data : *mut()) -> i32 {
     println!("server_read_callback");
     let mut socket = TcpStream::from_fd(fd as i32);
 
@@ -76,14 +76,14 @@ fn server_read_callback(ev : &mut EventLoop, fd : u64, _ : EventFlags, _data : *
     0
 }
 
-fn accept_callback(ev : &mut EventLoop, _fd : u64, _ : EventFlags, data : *mut ()) -> i32 {
+fn accept_callback(ev : &mut EventLoop, _fd : u32, _ : EventFlags, data : *mut ()) -> i32 {
     let sock_mgr : &mut SocketManger = unsafe { &mut *(data as *mut SocketManger) };
 
     let (new_socket, new_attr) = sock_mgr.listener.accept().unwrap();
     let _ = net2::TcpStreamExt::set_nonblocking(&new_socket, false);
 
     println!("{:?} attr is {:?}", new_socket, new_attr);
-    ev.add_event(EventEntry::new(new_socket.as_fd() as u64, FLAG_READ, Some(server_read_callback), Some(data)));
+    ev.add_event(EventEntry::new(new_socket.as_fd() as u32, FLAG_READ, Some(server_read_callback), Some(data)));
     mem::forget(new_socket);
     0
 }
@@ -101,8 +101,8 @@ pub fn test_base_echo() {
     let _ = net2::TcpStreamExt::set_nonblocking(&client, false);
 
     let mut sock_mgr = SocketManger { listener : listener, client : client };
-    event_loop.add_event(EventEntry::new(sock_mgr.listener.as_fd() as u64, FLAG_READ, Some(accept_callback), Some(&sock_mgr as *const _ as *mut ())));
-    event_loop.add_event(EventEntry::new(sock_mgr.client.as_fd() as u64, FLAG_READ, Some(client_read_callback), Some(&sock_mgr as *const _ as *mut ())));
+    event_loop.add_event(EventEntry::new(sock_mgr.listener.as_fd() as u32, FLAG_READ, Some(accept_callback), Some(&sock_mgr as *const _ as *mut ())));
+    event_loop.add_event(EventEntry::new(sock_mgr.client.as_fd() as u32, FLAG_READ, Some(client_read_callback), Some(&sock_mgr as *const _ as *mut ())));
 
     sock_mgr.client.write(b"hello world").unwrap();
 
