@@ -46,7 +46,6 @@ impl Selector {
             tv_sec : (timeout / 1000) as i32,
             tv_usec : ((timeout % 1000) * 1000) as i32,
         };
-
         while read_index < self.read_sockets.len() || write_index < self.write_sockets.len() {
             read_index = copy_sets(&self.read_sockets, &mut self.read_sets, read_index);
             write_index = copy_sets(&self.write_sockets, &mut self.write_sets, write_index);
@@ -54,7 +53,6 @@ impl Selector {
             if count <= 0 {
                 continue;
             }
-                        println!("count is {}", count);
 
             if self.read_sets.fd_count > 0 {
                 for i in 0 .. self.read_sets.fd_count {
@@ -77,7 +75,7 @@ impl Selector {
         if ev_events.contains(FLAG_READ) && !self.read_sockets.contains(&fd) {
             self.read_sockets.push(fd);
         }
-        if ev_events.contains(FLAG_WRITE) && !self.read_sockets.contains(&fd) {
+        if ev_events.contains(FLAG_WRITE) && !self.write_sockets.contains(&fd) {
             self.write_sockets.push(fd);
         }
     }
@@ -85,8 +83,8 @@ impl Selector {
     pub fn deregister(&mut self, fd : u32, _ : EventFlags) {
         let fd = fd as SOCKET;
         fn search_index(vec : &Vec<SOCKET>, value : &SOCKET) -> Option<usize> {
-            for i in 0 .. vec.len() {
-                if *value == vec[i] {
+            for (i, v) in vec.iter().enumerate() {
+                if value == v {
                     return Some(i);
                 }
             }

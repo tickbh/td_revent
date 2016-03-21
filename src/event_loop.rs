@@ -42,19 +42,17 @@ pub struct EventLoop {
 }
 
 
-static mut el : *mut EventLoop = 0 as *mut _;
+// static mut el : *mut EventLoop = 0 as *mut _;
 
 impl EventLoop {
-
-
-    pub fn instance() -> &'static mut EventLoop {
-        unsafe {
-            if el == 0 as *mut _ {
-                el = Box::into_raw(Box::new(EventLoop::new().unwrap()));
-            }
-            &mut *el
-        }
-    }
+    // pub fn instance() -> &'static mut EventLoop {
+    //     unsafe {
+    //         if el == 0 as *mut _ {
+    //             el = Box::into_raw(Box::new(EventLoop::new().unwrap()));
+    //         }
+    //         &mut *el
+    //     }
+    // }
 
     pub fn new() -> io::Result<EventLoop> {
         EventLoop::configured(Default::default())
@@ -94,6 +92,7 @@ impl EventLoop {
         while self.run {
             // Execute ticks as long as the event loop is running
             try!(self.run_once());
+            ::std::thread::sleep(::std::time::Duration::from_millis(1000));
         }
 
         Ok(())
