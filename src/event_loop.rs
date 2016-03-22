@@ -92,7 +92,7 @@ impl EventLoop {
         while self.run {
             // Execute ticks as long as the event loop is running
             try!(self.run_once());
-            ::std::thread::sleep(::std::time::Duration::from_millis(1000));
+            
         }
 
         Ok(())
@@ -110,7 +110,11 @@ impl EventLoop {
                 ev.callback(self, evt.ev_events);
             }
         }
-        self.timer_process();
+        let is_op = self.timer_process();
+        //nothing todo in this loop, we will sleep 1millis
+        if size == 0 && !is_op {
+            ::std::thread::sleep(::std::time::Duration::from_millis(1));
+        }
         Ok(())
     }
 
@@ -133,17 +137,19 @@ impl EventLoop {
         self.event_maps.remove(&ev_fd);
     }
 
-    fn timer_process(&mut self) {
+    fn timer_process(&mut self) -> bool {
         let now = self.timer.now();
+        let mut is_op = false;
         loop {
             match self.timer.tick_time(now) {
                 Some(entry) => {
+                    is_op = true;
                     let ret = entry.callback(self, EventFlags::empty());
                     if ret == 0 && entry.ev_events.contains(FLAG_PERSIST)  {
                         let _ = self.add_timer(entry);
                     }
                 },
-                _ => return
+                _ => return is_op,
             }
         }
     }

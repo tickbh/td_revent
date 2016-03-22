@@ -23,7 +23,7 @@ impl Timer {
 	}
 
 	pub fn now(&self) -> u64 {
-		time::precise_time_ns() / 1000_000
+		time::precise_time_ns() / 1000
 	}
 
 	// ID = 0 为无效ID
@@ -32,7 +32,7 @@ impl Timer {
 			entry.ev_fd = self.calc_new_id();	
 		};
 		let time_id = entry.ev_fd;
-		entry.tick_ms = time::precise_time_ns() / 1000_000 + entry.tick_step;
+		entry.tick_ms = time::precise_time_ns() / 1000 + entry.tick_step;
 		self.timer_queue.push(entry);
 		time_id
 	}

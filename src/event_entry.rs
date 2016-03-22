@@ -29,9 +29,10 @@ impl Clone for EventEntry {
 }
 
 impl EventEntry {
+    /// tick_step is us
 	pub fn new_timer(tick_step : u64, tick_repeat : bool, call_back : Option<fn(ev : &mut EventLoop, fd : u32, flag : EventFlags, data : *mut ()) -> i32>, data : Option<*mut ()>) -> EventEntry {
 		EventEntry {
-			tick_ms : time::precise_time_ns() / 1000_000 + tick_step,
+			tick_ms : time::precise_time_ns() / 1000 + tick_step,
 			tick_step : tick_step,
 			ev_events : if tick_repeat { FLAG_TIMEOUT | FLAG_PERSIST } else { FLAG_TIMEOUT },
 		    call_back : call_back,
