@@ -99,7 +99,7 @@ pub fn test_echo_server() {
     let mut event_loop = EventLoop::new().unwrap();
     let mut sock_mgr = SocketManger { listener : HashMap::new(), clients : HashMap::new() };
 
-    let addr = "127.0.0.1:1009";
+    let addr = "127.0.0.1:10090";
     let listener = TcpListener::bind(&addr).unwrap();
     let _ = net2::TcpListenerExt::set_nonblocking(&listener, false);
     event_loop.add_event(EventEntry::new(listener.as_fd() as u32, FLAG_READ, Some(accept_callback), Some(&sock_mgr as *const _ as *mut ())));
