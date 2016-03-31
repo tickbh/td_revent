@@ -1,7 +1,7 @@
 # Event - Async IO similar to libevent
 Event is a lightweight IO library for Rust with a focus on adding as little overhead as possible over the OS abstractions.
 
-Build Status
+[![Build Status](https://api.travis-ci.org/tickbh/td_revent.svg?branch=master)](https://travis-ci.org/tickbh/td_revent)
 
 Getting started guide Currently a work in progress:
 

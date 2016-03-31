@@ -7,7 +7,7 @@ description = "Event library for Rust, Async IO similar to libevent"
 repository = "https://github.com/tickbh/td_revent"
 readme = "README.md"
 license = "MIT/Apache-2.0"
-keywords = ["event", "Async IO", "libevent"]
+keywords = ["event", "AsyncIO", "libevent"]
 
 [dependencies]
 libc   = "*"
