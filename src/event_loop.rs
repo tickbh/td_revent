@@ -127,7 +127,6 @@ impl EventLoop {
     }
 
     pub fn add_event(&mut self, entry : EventEntry) {
-        println!("add event {:?}", entry);
         let _ = self.selector.register(entry.ev_fd, entry.ev_events);
         self.event_maps.insert(entry.ev_fd, entry);
     }
