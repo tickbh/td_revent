@@ -43,8 +43,8 @@ fn time_callback(ev : &mut EventLoop, fd : u64, _ : EventFlags, data : *mut ()) 
 
 pub fn main() {
     let mut event_loop : EventLoop = EventLoop::new().unwrap();
-    event_loop.add_timer(EventEntry::new_timer(100, false, Some(time_callback), Some( ptr::null_mut() )));
-    event_loop.add_timer(EventEntry::new_timer(200, true, Some(time_callback), Some( ptr::null_mut() )));
+    event_loop.add_timer(EventEntry::new_timer(100, false, Some(time_callback), None));
+    event_loop.add_timer(EventEntry::new_timer(200, true, Some(time_callback), None));
     event_loop.run().unwrap();
 }
 ```
