@@ -35,7 +35,7 @@ extern crate td_revent;
 use td_revent::{EventLoop, EventEntry, EventFlags};
 use std::ptr;
 
-fn time_callback(ev : *mut EventLoop, fd : u64, _ : EventFlags, data : *mut ()) -> i32 {
+fn time_callback(ev : &mut EventLoop, fd : u64, _ : EventFlags, data : *mut ()) -> i32 {
     println!("fd is {:?}", fd);
     //return 0 status ok other will delete the timer
     0
@@ -49,9 +49,10 @@ pub fn main() {
 }
 ```
 ##Features
-*Event loop backed by epoll, windows by select.
-*Non-blocking TCP sockets
-*High performance timer system
+
+Event loop backed by epoll, windows by select.
+Non-blocking TCP sockets
+High performance timer system
 
 ##Platforms
 Currently, td_revent only supports Linux and Windows. The goal is to support all platforms that support Rust and the readiness IO model.

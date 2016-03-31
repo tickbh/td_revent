@@ -1,13 +1,22 @@
 [package]
-name = "event"
+name = "td_revent"
 version = "0.1.0"
-authors = ["wgd <wgd@qq.com>"]
+authors = [ "tickbh <tickdream125@hotmail.com>" ]
+
+description = "Event library for Rust, Async IO similar to libevent"
+repository = "https://github.com/tickbh/td_revent"
+readme = "README.md"
+license = "MIT/Apache-2.0"
+keywords = ["event", "Async IO", "libevent"]
 
 [dependencies]
-libc = "*"
-num = "*"
-time = "0.1.31"
+libc   = "*"
+time   = "0.1.33"
 bitflags = "0.3"
+winapi = "0.2"
+ws2_32-sys = "0.2"
+net2   = { version = "0.2.19", default-features = false }
+
 
 [[test]]
 name = "test"

@@ -1,18 +1,17 @@
-use event::*;
+use td_revent::*;
 use std::fmt;
 use std::ptr;
 
 static mut s_count : i32 = 0;
-static mut s_delTimer : u64 = 0;
+static mut s_delTimer : u32 = 0;
 
 //timer return no success(0) will no be repeat
-fn time_callback(ev : *mut EventLoop, fd : u64, _ : EventFlags, data : *mut ()) -> i32 {
+fn time_callback(ev : &mut EventLoop, fd : u32, _ : EventFlags, data : *mut ()) -> i32 {
     let obj : *mut Point = data as *mut Point;
     if obj.is_null() {
         println!("data is null {:?}", data);
         let count = unsafe { s_count = s_count + 1; s_count };
         if count >= 5  {
-            let mut ev = unsafe { &mut *ev };
             ev.shutdown();
         }
     } else {

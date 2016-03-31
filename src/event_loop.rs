@@ -38,23 +38,21 @@ pub struct EventLoop {
     selector : Selector,
     config: EventLoopConfig,
     evts : Vec<EventEntry>, 
-    event_maps : HashMap<u64, EventEntry>,
+    event_maps : HashMap<u32, EventEntry>,
 }
 
 
+// static mut el : *mut EventLoop = 0 as *mut _;
 
 impl EventLoop {
-
-    pub fn instance() -> *mut EventLoop {
-        static mut el : *mut EventLoop = 0 as *mut _;
-        unsafe {
-            if el == 0 as *mut _ {
-                el = Box::into_raw(Box::new(EventLoop::new().unwrap()));
-            }
-            el
-        }
-
-    }
+    // pub fn instance() -> &'static mut EventLoop {
+    //     unsafe {
+    //         if el == 0 as *mut _ {
+    //             el = Box::into_raw(Box::new(EventLoop::new().unwrap()));
+    //         }
+    //         &mut *el
+    //     }
+    // }
 
     pub fn new() -> io::Result<EventLoop> {
         EventLoop::configured(Default::default())
@@ -94,6 +92,7 @@ impl EventLoop {
         while self.run {
             // Execute ticks as long as the event loop is running
             try!(self.run_once());
+            
         }
 
         Ok(())
@@ -111,40 +110,45 @@ impl EventLoop {
                 ev.callback(self, evt.ev_events);
             }
         }
-        self.timer_process();
+        let is_op = self.timer_process();
+        //nothing todo in this loop, we will sleep 1millis
+        if size == 0 && !is_op {
+            ::std::thread::sleep(::std::time::Duration::from_millis(1));
+        }
         Ok(())
     }
 
-    pub fn add_timer(&mut self, entry : EventEntry) -> u64 {
+    pub fn add_timer(&mut self, entry : EventEntry) -> u32 {
         self.timer.add_timer(entry)
     }
 
-    pub fn del_timer(&mut self, time_id : u64) {
-        self.timer.del_timer(time_id);
+    pub fn del_timer(&mut self, time_id : u32) -> Option<EventEntry> {
+        self.timer.del_timer(time_id)
     }
 
     pub fn add_event(&mut self, entry : EventEntry) {
-        println!("add event {:?}", entry);
         let _ = self.selector.register(entry.ev_fd, entry.ev_events);
         self.event_maps.insert(entry.ev_fd, entry);
     }
 
-    pub fn del_event(&mut self, ev_fd : u64, ev_events : EventFlags) {
+    pub fn del_event(&mut self, ev_fd : u32, ev_events : EventFlags) {
         let _ = self.selector.deregister(ev_fd, ev_events);
         self.event_maps.remove(&ev_fd);
     }
 
-    fn timer_process(&mut self) {
+    fn timer_process(&mut self) -> bool {
         let now = self.timer.now();
+        let mut is_op = false;
         loop {
             match self.timer.tick_time(now) {
                 Some(entry) => {
+                    is_op = true;
                     let ret = entry.callback(self, EventFlags::empty());
                     if ret == 0 && entry.ev_events.contains(FLAG_PERSIST)  {
                         let _ = self.add_timer(entry);
                     }
                 },
-                _ => return
+                _ => return is_op,
             }
         }
     }

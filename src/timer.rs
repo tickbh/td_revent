@@ -9,8 +9,8 @@ extern crate time;
 
 pub struct Timer {
     timer_queue: BinaryHeap<EventEntry>,
-    time_sets : HashSet<u64>,
-    time_id : u64,
+    time_sets : HashSet<u32>,
+    time_id : u32,
 }
 
 impl Timer {
@@ -23,28 +23,32 @@ impl Timer {
 	}
 
 	pub fn now(&self) -> u64 {
-		time::precise_time_ns() / 1000_000
+		time::precise_time_ns() / 1000
 	}
 
 	// ID = 0 为无效ID
-	pub fn add_timer(&mut self, mut entry : EventEntry) -> u64 {
+	pub fn add_timer(&mut self, mut entry : EventEntry) -> u32 {
 		if entry.ev_fd == 0 {
 			entry.ev_fd = self.calc_new_id();	
 		};
-		entry.tick_ms = time::precise_time_ns() / 1000_000 + entry.tick_step;
+		let time_id = entry.ev_fd;
+		entry.tick_ms = time::precise_time_ns() / 1000 + entry.tick_step;
 		self.timer_queue.push(entry);
-		self.time_id
+		time_id
 	}
 
-	pub fn del_timer(&mut self, time_id : u64) {
+	pub fn del_timer(&mut self, time_id : u32) -> Option<EventEntry> {
+		let mut ret : Option<EventEntry> = None;
 		let mut data = Vec::new();
 		while let Some(entry) = self.timer_queue.pop() {
 			if entry.ev_fd != time_id {
 				data.push(entry);
+			} else {
+				ret = Some(entry);
 			}
 		}
 		self.timer_queue = BinaryHeap::from(data);
-
+		ret
 	}
 
 	pub fn tick_first(&self) -> Option<u64> {
@@ -61,7 +65,7 @@ impl Timer {
 		self.timer_queue.pop()
 	}
 
-	fn calc_new_id(&mut self) -> u64 {
+	fn calc_new_id(&mut self) -> u32 {
 		loop {
 			self.time_id += 1;
 			self.time_id = cmp::max(self.time_id, 1);
