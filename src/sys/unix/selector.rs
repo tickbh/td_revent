@@ -59,7 +59,7 @@ impl Selector {
             if value.events.contains(EPOLLOUT) {
                 ev_flag = ev_flag | FLAG_WRITE;
             }
-            evts.push(EventEntry::new_evfd(value.data, ev_flag));
+            evts.push(EventEntry::new_evfd(value.data as u32, ev_flag));
         }
         Ok(cnt as u32)
     }
@@ -68,10 +68,10 @@ impl Selector {
 
         let info = EpollEvent {
             events: ioevent_to_epoll(ev_events),
-            data: fd as u32
+            data: fd as u64
         };
 
-        epoll_ctl(self.epfd, EpollOp::EpollCtlAdd, fd as i32, &info)
+        epoll_ctl(self.epfd, EpollOp::EpollCtlAdd, fd as RawFd, &info)
             .map_err(from_sys_error)
     }
 
