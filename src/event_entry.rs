@@ -2,7 +2,7 @@ pub use {EventFlags, FLAG_TIMEOUT, FLAG_READ, FLAG_WRITE, FLAG_PERSIST, EventLoo
 use std::fmt;
 use std::ptr;
 use std::cmp::Ordering;
-use std::hash::{Hash, Hasher};
+use std::hash::{Hash};
 use std::hash;
 extern crate time;
 
