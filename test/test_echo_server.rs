@@ -66,7 +66,6 @@ fn server_read_callback(ev : &mut EventLoop, fd : u32, _ : EventFlags, data : *m
     };
 
     if size <= 0 {
-        // socket.close().unwrap();
         drop(socket);
         ev.shutdown();
         return 0;
@@ -107,7 +106,6 @@ pub fn test_echo_server() {
     let mut stream = TcpStream::connect(&addr).unwrap();
     let _ = net2::TcpStreamExt::set_nonblocking(&stream, false);
 
-    // stream.write(&format!("hello world")[..]).unwrap();
     stream.write(b"hello world").unwrap();
     event_loop.add_event(EventEntry::new(stream.as_fd() as u32, FLAG_READ, Some(client_read_callback), Some(&sock_mgr as *const _ as *mut ())));
 
