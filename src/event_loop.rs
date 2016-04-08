@@ -35,10 +35,10 @@ impl Default for EventLoopConfig {
 pub struct EventLoop {
     run: bool,
     timer: Timer,
-    selector : Selector,
+    selector: Selector,
     config: EventLoopConfig,
-    evts : Vec<EventEntry>, 
-    event_maps : HashMap<u32, EventEntry>,
+    evts: Vec<EventEntry>,
+    event_maps: HashMap<u32, EventEntry>,
 }
 
 
@@ -64,10 +64,10 @@ impl EventLoop {
         Ok(EventLoop {
             run: true,
             timer: timer,
-            selector : selector,
+            selector: selector,
             config: config,
-            event_maps : HashMap::new(),
-            evts : vec![],
+            event_maps: HashMap::new(),
+            evts: vec![],
         })
     }
 
@@ -75,7 +75,7 @@ impl EventLoop {
     /// current iteration.
     pub fn shutdown(&mut self) {
         self.run = false;
-        
+
     }
 
     /// Indicates whether the event loop is currently running. If it's not it has either
@@ -92,7 +92,7 @@ impl EventLoop {
         while self.run {
             // Execute ticks as long as the event loop is running
             try!(self.run_once());
-            
+
         }
 
         Ok(())
@@ -103,7 +103,7 @@ impl EventLoop {
     /// time.
     pub fn run_once(&mut self) -> io::Result<()> {
         let size = try!(self.selector.select(&mut self.evts, 0)) as usize;
-        for index in 0 .. size {
+        for index in 0..size {
             let evt = self.evts[index].clone();
             if self.event_maps.contains_key(&evt.ev_fd) {
                 let ev = self.event_maps[&evt.ev_fd].clone();
@@ -111,27 +111,27 @@ impl EventLoop {
             }
         }
         let is_op = self.timer_process();
-        //nothing todo in this loop, we will sleep 1millis
+        // nothing todo in this loop, we will sleep 1millis
         if size == 0 && !is_op {
             ::std::thread::sleep(::std::time::Duration::from_millis(1));
         }
         Ok(())
     }
 
-    pub fn add_timer(&mut self, entry : EventEntry) -> u32 {
+    pub fn add_timer(&mut self, entry: EventEntry) -> u32 {
         self.timer.add_timer(entry)
     }
 
-    pub fn del_timer(&mut self, time_id : u32) -> Option<EventEntry> {
+    pub fn del_timer(&mut self, time_id: u32) -> Option<EventEntry> {
         self.timer.del_timer(time_id)
     }
 
-    pub fn add_event(&mut self, entry : EventEntry) {
+    pub fn add_event(&mut self, entry: EventEntry) {
         let _ = self.selector.register(entry.ev_fd, entry.ev_events);
         self.event_maps.insert(entry.ev_fd, entry);
     }
 
-    pub fn del_event(&mut self, ev_fd : u32, ev_events : EventFlags) {
+    pub fn del_event(&mut self, ev_fd: u32, ev_events: EventFlags) {
         let _ = self.selector.deregister(ev_fd, ev_events);
         self.event_maps.remove(&ev_fd);
     }
@@ -144,16 +144,14 @@ impl EventLoop {
                 Some(entry) => {
                     is_op = true;
                     let ret = entry.callback(self, EventFlags::empty());
-                    if ret == 0 && entry.ev_events.contains(FLAG_PERSIST)  {
+                    if ret == 0 && entry.ev_events.contains(FLAG_PERSIST) {
                         let _ = self.add_timer(entry);
                     }
-                },
+                }
                 _ => return is_op,
             }
         }
     }
 }
 
-unsafe impl Sync for EventLoop {
-    
-}
+unsafe impl Sync for EventLoop {}

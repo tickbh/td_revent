@@ -5,13 +5,17 @@ use std::os::unix::io::RawFd;
 
 
 mod ffi {
-    use libc::{c_int};
+    use libc::c_int;
     use super::EpollEvent;
 
-    extern {
+    extern "C" {
         pub fn epoll_create(size: c_int) -> c_int;
         pub fn epoll_ctl(epfd: c_int, op: c_int, fd: c_int, event: *const EpollEvent) -> c_int;
-        pub fn epoll_wait(epfd: c_int, events: *mut EpollEvent, max_events: c_int, timeout: c_int) -> c_int;
+        pub fn epoll_wait(epfd: c_int,
+                          events: *mut EpollEvent,
+                          max_events: c_int,
+                          timeout: c_int)
+                          -> c_int;
     }
 }
 
@@ -53,7 +57,7 @@ bitflags!(
 //             (EPOLLONESHOT,  "EPOLLONESHOT"),
 //             (EPOLLET,       "EPOLLET")];
 
-//         let mut first = true;
+// let mut first = true;
 
 //         for &(val, name) in variants.iter() {
 //             if self.contains(val) {
@@ -76,7 +80,7 @@ bitflags!(
 pub enum EpollOp {
     EpollCtlAdd = 1,
     EpollCtlDel = 2,
-    EpollCtlMod = 3
+    EpollCtlMod = 3,
 }
 
 #[cfg(all(target_os = "android", not(target_arch = "x86_64")))]
@@ -84,7 +88,7 @@ pub enum EpollOp {
 #[repr(C)]
 pub struct EpollEvent {
     pub events: EpollEventKind,
-    pub data: u64
+    pub data: u64,
 }
 
 #[cfg(all(target_os = "android", not(target_arch = "x86_64")))]
@@ -99,7 +103,7 @@ fn test_epoll_event_size() {
 #[repr(C, packed)]
 pub struct EpollEvent {
     pub events: EpollEventKind,
-    pub data: u64
+    pub data: u64,
 }
 
 #[inline]
@@ -125,7 +129,10 @@ pub fn epoll_ctl(epfd: RawFd, op: EpollOp, fd: RawFd, event: &EpollEvent) -> Res
 #[inline]
 pub fn epoll_wait(epfd: RawFd, events: &mut [EpollEvent], timeout_ms: isize) -> Result<usize> {
     let res = unsafe {
-        ffi::epoll_wait(epfd, events.as_mut_ptr(), events.len() as c_int, timeout_ms as c_int)
+        ffi::epoll_wait(epfd,
+                        events.as_mut_ptr(),
+                        events.len() as c_int,
+                        timeout_ms as c_int)
     };
 
     if res < 0 {

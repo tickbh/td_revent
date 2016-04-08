@@ -1,21 +1,21 @@
 [package]
 name = "td_revent"
-version = "0.1.0"
+version = "0.1.1"
 authors = [ "tickbh <tickdream125@hotmail.com>" ]
 
 description = "Event library for Rust, Async IO similar to libevent"
 repository = "https://github.com/tickbh/td_revent"
 readme = "README.md"
 license = "MIT/Apache-2.0"
-keywords = ["event", "Async IO", "libevent"]
+keywords = ["event", "AsyncIO", "libevent"]
 
 [dependencies]
-libc   = "*"
-time   = "0.1.33"
+libc   = "^0.2.1"
+time   = "0.1.34"
 bitflags = "0.3"
-winapi = "0.2"
-ws2_32-sys = "0.2"
-net2   = { version = "0.2.19", default-features = false }
+winapi = "^0.2"
+ws2_32-sys = "^0.2"
+net2   = { version = "0.2.23", default-features = false }
 
 
 [[test]]

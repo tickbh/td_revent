@@ -1,7 +1,7 @@
 # Event - Async IO similar to libevent
 Event is a lightweight IO library for Rust with a focus on adding as little overhead as possible over the OS abstractions.
 
-Build Status
+[![Build Status](https://api.travis-ci.org/tickbh/td_revent.svg?branch=master)](https://travis-ci.org/tickbh/td_revent)
 
 Getting started guide Currently a work in progress:
 
@@ -43,8 +43,8 @@ fn time_callback(ev : &mut EventLoop, fd : u64, _ : EventFlags, data : *mut ()) 
 
 pub fn main() {
     let mut event_loop : EventLoop = EventLoop::new().unwrap();
-    event_loop.add_timer(EventEntry::new_timer(100, false, Some(time_callback), Some( ptr::null_mut() )));
-    event_loop.add_timer(EventEntry::new_timer(200, true, Some(time_callback), Some( ptr::null_mut() )));
+    event_loop.add_timer(EventEntry::new_timer(100, false, Some(time_callback), None));
+    event_loop.add_timer(EventEntry::new_timer(200, true, Some(time_callback), None));
     event_loop.run().unwrap();
 }
 ```
