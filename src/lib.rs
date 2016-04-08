@@ -11,11 +11,8 @@ mod timer;
 mod event_flags;
 mod event_entry;
 
-pub use timer::{Timer};
-pub use event_loop::{
-    EventLoop,
-    EventLoopConfig,
-};
+pub use timer::Timer;
+pub use event_loop::{EventLoop, EventLoopConfig};
 
 pub mod sys;
 
