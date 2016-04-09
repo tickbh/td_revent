@@ -25,16 +25,17 @@ impl Selector {
 
     pub fn select(&mut self, evts: &mut Vec<EventEntry>, timeout: u32) -> io::Result<u32> {
         fn copy_sets(vec: &Vec<SOCKET>, fd_set: &mut winapi::fd_set, index: usize) -> usize {
-            let new_index = index;
+            let mut new_index = index;
             fd_set.fd_count = 0;
             for i in index..vec.len() {
                 fd_set.fd_array[fd_set.fd_count as usize] = vec[i];
                 fd_set.fd_count += 1;
+                new_index += 1;
                 if fd_set.fd_count >= winapi::FD_SETSIZE as u32 {
                     return new_index;
                 }
             }
-            vec.len()
+            new_index
         }
 
         evts.clear();
@@ -46,8 +47,8 @@ impl Selector {
             tv_usec: ((timeout % 1000) * 1000) as i32,
         };
         while read_index < self.read_sockets.len() || write_index < self.write_sockets.len() {
-            read_index = copy_sets(&self.read_sockets, &mut self.read_sets, read_index);
-            write_index = copy_sets(&self.write_sockets, &mut self.write_sets, write_index);
+            read_index += copy_sets(&self.read_sockets, &mut self.read_sets, read_index);
+            write_index += copy_sets(&self.write_sockets, &mut self.write_sets, write_index);
             let count = unsafe {
                 select(0,
                        &mut self.read_sets,
