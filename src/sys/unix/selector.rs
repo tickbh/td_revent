@@ -72,9 +72,9 @@ impl Selector {
         epoll_ctl(self.epfd, EpollOp::EpollCtlAdd, fd as RawFd, &info).map_err(from_sys_error)
     }
 
-    pub fn deregister(&mut self, fd: u32, _ev_events: EventFlags) -> io::Result<()> {
+    pub fn deregister(&mut self, fd: u32, ev_events: EventFlags) -> io::Result<()> {
         let info = EpollEvent {
-            events: EpollEventKind::empty(),
+            events: ioevent_to_epoll(ev_events),
             data: 0,
         };
 

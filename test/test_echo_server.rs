@@ -87,7 +87,7 @@ fn accept_callback(ev : &mut EventLoop, fd : u32, _ : EventFlags, data : *mut ()
     sock_mgr.listener.insert(fd, listener);
 
     println!("{:?} attr is {:?}", new_socket, new_attr);
-    ev.add_event(EventEntry::new(new_socket.as_fd() as u32, FLAG_READ, Some(server_read_callback), Some(data)));
+    ev.add_event(EventEntry::new(new_socket.as_fd() as u32, FLAG_READ | FLAG_PERSIST, Some(server_read_callback), Some(data)));
     sock_mgr.clients.insert(new_socket.as_fd() as u32, new_socket);
     0
 }
@@ -101,13 +101,13 @@ pub fn test_echo_server() {
     let addr = "127.0.0.1:10090";
     let listener = TcpListener::bind(&addr).unwrap();
     let _ = net2::TcpListenerExt::set_nonblocking(&listener, false);
-    event_loop.add_event(EventEntry::new(listener.as_fd() as u32, FLAG_READ, Some(accept_callback), Some(&sock_mgr as *const _ as *mut ())));
+    event_loop.add_event(EventEntry::new(listener.as_fd() as u32, FLAG_READ | FLAG_PERSIST, Some(accept_callback), Some(&sock_mgr as *const _ as *mut ())));
 
     let mut stream = TcpStream::connect(&addr).unwrap();
     let _ = net2::TcpStreamExt::set_nonblocking(&stream, false);
 
     stream.write(b"hello world").unwrap();
-    event_loop.add_event(EventEntry::new(stream.as_fd() as u32, FLAG_READ, Some(client_read_callback), Some(&sock_mgr as *const _ as *mut ())));
+    event_loop.add_event(EventEntry::new(stream.as_fd() as u32, FLAG_READ | FLAG_PERSIST, Some(client_read_callback), Some(&sock_mgr as *const _ as *mut ())));
 
     sock_mgr.listener.insert(listener.as_fd() as u32, listener);
     sock_mgr.clients.insert(stream.as_fd() as u32, stream);

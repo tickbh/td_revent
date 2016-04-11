@@ -88,7 +88,7 @@ impl Selector {
         }
     }
 
-    pub fn deregister(&mut self, fd: u32, _: EventFlags) {
+    pub fn deregister(&mut self, fd: u32, flag: EventFlags) {
         let fd = fd as SOCKET;
         fn search_index(vec: &Vec<SOCKET>, value: &SOCKET) -> Option<usize> {
             for (i, v) in vec.iter().enumerate() {
@@ -99,12 +99,16 @@ impl Selector {
             None
         };
 
-        if let Some(index) = search_index(&self.read_sockets, &fd) {
-            self.read_sockets.remove(index);
+        if flag.contains(FLAG_READ) {
+            if let Some(index) = search_index(&self.read_sockets, &fd) {
+                self.read_sockets.remove(index);
+            }
         }
 
-        if let Some(index) = search_index(&self.write_sockets, &fd) {
-            self.write_sockets.remove(index);
+        if flag.contains(FLAG_WRITE) {
+            if let Some(index) = search_index(&self.write_sockets, &fd) {
+                self.write_sockets.remove(index);
+            }
         }
     }
 }

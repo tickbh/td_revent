@@ -83,7 +83,7 @@ fn accept_callback(ev : &mut EventLoop, _fd : u32, _ : EventFlags, data : *mut (
     let _ = net2::TcpStreamExt::set_nonblocking(&new_socket, false);
 
     println!("{:?} attr is {:?}", new_socket, new_attr);
-    ev.add_event(EventEntry::new(new_socket.as_fd() as u32, FLAG_READ, Some(server_read_callback), Some(data)));
+    ev.add_event(EventEntry::new(new_socket.as_fd() as u32, FLAG_READ | FLAG_PERSIST, Some(server_read_callback), Some(data)));
     mem::forget(new_socket);
     0
 }
@@ -101,8 +101,8 @@ pub fn test_base_echo() {
     let _ = net2::TcpStreamExt::set_nonblocking(&client, false);
 
     let mut sock_mgr = SocketManger { listener : listener, client : client };
-    event_loop.add_event(EventEntry::new(sock_mgr.listener.as_fd() as u32, FLAG_READ, Some(accept_callback), Some(&sock_mgr as *const _ as *mut ())));
-    event_loop.add_event(EventEntry::new(sock_mgr.client.as_fd() as u32, FLAG_READ, Some(client_read_callback), Some(&sock_mgr as *const _ as *mut ())));
+    event_loop.add_event(EventEntry::new(sock_mgr.listener.as_fd() as u32, FLAG_READ | FLAG_PERSIST, Some(accept_callback), Some(&sock_mgr as *const _ as *mut ())));
+    event_loop.add_event(EventEntry::new(sock_mgr.client.as_fd() as u32, FLAG_READ | FLAG_PERSIST, Some(client_read_callback), Some(&sock_mgr as *const _ as *mut ())));
 
     sock_mgr.client.write(b"hello world").unwrap();
 
