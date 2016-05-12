@@ -3,7 +3,7 @@
 use {Timer, EventEntry};
 use sys::Selector;
 use std::collections::HashMap;
-use {EventFlags, FLAG_PERSIST, FLAG_READ, FLAG_WRITE};
+use {EventFlags, FLAG_PERSIST};
 use std::io;
 
 /// Configure EventLoop runtime details
@@ -38,22 +38,13 @@ pub struct EventLoop {
     selector: Selector,
     config: EventLoopConfig,
     evts: Vec<EventEntry>,
-    event_maps: HashMap<(u32, EventFlags), EventEntry>,
+    event_maps: HashMap<u32, EventEntry>,
 }
 
 
 // static mut el : *mut EventLoop = 0 as *mut _;
 
 impl EventLoop {
-    // pub fn instance() -> &'static mut EventLoop {
-    //     unsafe {
-    //         if el == 0 as *mut _ {
-    //             el = Box::into_raw(Box::new(EventLoop::new().unwrap()));
-    //         }
-    //         &mut *el
-    //     }
-    // }
-
     pub fn new() -> io::Result<EventLoop> {
         EventLoop::configured(Default::default())
     }
@@ -98,20 +89,6 @@ impl EventLoop {
         Ok(())
     }
 
-    fn build_entry_key(fd : u32, flag : EventFlags) -> (u32, EventFlags) {
-        if flag.contains(FLAG_READ) {
-            (fd, FLAG_READ)
-        } else if flag.contains(FLAG_WRITE) {
-            (fd, FLAG_WRITE)
-        } else {
-            unreachable!("unkown event flag");
-        }
-    }
-
-    fn convert_entry_to_key(entry : &EventEntry) -> (u32, EventFlags) {
-        Self::build_entry_key(entry.ev_fd, entry.ev_events)
-    }
-
     /// Spin the event loop once, with a timeout of one second, and notify the
     /// handler if any of the registered handles become ready during that
     /// time.
@@ -119,9 +96,8 @@ impl EventLoop {
         let size = try!(self.selector.select(&mut self.evts, 0)) as usize;
         let evts : Vec<EventEntry> = self.evts.drain(..).collect();
         for evt in evts {
-            let key = Self::convert_entry_to_key(&evt);
-            if self.event_maps.contains_key(&key) {
-                let ev = self.event_maps[&key].clone();
+            if self.event_maps.contains_key(&evt.ev_fd) {
+                let ev = self.event_maps[&evt.ev_fd].clone();
                 ev.callback(self, evt.ev_events);
                 if !ev.ev_events.contains(FLAG_PERSIST) {
                     self.del_event(ev.ev_fd, ev.ev_events);
@@ -146,15 +122,13 @@ impl EventLoop {
     }
 
     pub fn add_event(&mut self, entry: EventEntry) {
-        let key = Self::convert_entry_to_key(&entry);
         let _ = self.selector.register(entry.ev_fd, entry.ev_events);
-        self.event_maps.insert(key, entry);
+        self.event_maps.insert(entry.ev_fd, entry);
     }
 
     pub fn del_event(&mut self, ev_fd: u32, ev_events: EventFlags) {
-        let key = Self::build_entry_key(ev_fd, ev_events);
         let _ = self.selector.deregister(ev_fd, ev_events);
-        self.event_maps.remove(&key);
+        self.event_maps.remove(&ev_fd);
     }
 
     fn timer_process(&mut self) -> bool {

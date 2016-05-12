@@ -39,9 +39,6 @@ impl Selector {
 
         // Wait for epoll events for at most timeout_ms milliseconds
         let cnt = try!(epoll_wait(self.epfd, dst, timeout_ms).map_err(from_sys_error));
-        if cnt > 0 {
-            println!("select is {}", cnt);
-        }
 
         unsafe {
             self.evts.events.set_len(cnt);
