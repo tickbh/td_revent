@@ -1,143 +1,108 @@
 #![allow(dead_code)]
-use std::io::{Error, Result};
-use libc::c_int;
 use std::os::unix::io::RawFd;
+use std::io;
+use {EventEntry, EventFlags, FLAG_READ, FLAG_WRITE};
+
+use nix::unistd::close;
+use nix::sys::epoll::*;
+
+pub struct Selector {
+    epfd: RawFd,
+    evts: Events,
+}
 
 
-mod ffi {
-    use libc::c_int;
-    use super::EpollEvent;
+impl Selector {
+    pub fn new() -> io::Result<Selector> {
+        let epfd = try!(epoll_create());
+        Ok(Selector {
+            epfd: epfd,
+            evts: Events::new(),
+        })
+    }
 
-    extern "C" {
-        pub fn epoll_create(size: c_int) -> c_int;
-        pub fn epoll_ctl(epfd: c_int, op: c_int, fd: c_int, event: *const EpollEvent) -> c_int;
-        pub fn epoll_wait(epfd: c_int,
-                          events: *mut EpollEvent,
-                          max_events: c_int,
-                          timeout: c_int)
-                          -> c_int;
+    pub fn select(&mut self, evts: &mut Vec<EventEntry>, timeout_ms: u32) -> io::Result<u32> {
+        use std::{isize, slice};
+
+        let timeout_ms = if timeout_ms as isize >= isize::MAX {
+            isize::MAX
+        } else {
+            timeout_ms as isize
+        };
+
+        let dst = unsafe {
+            slice::from_raw_parts_mut(self.evts.events.as_mut_ptr(), self.evts.events.capacity())
+        };
+
+        // Wait for epoll events for at most timeout_ms milliseconds
+        let cnt = try!(epoll_wait(self.epfd, dst, timeout_ms).map_err(super::from_nix_error));
+
+        unsafe {
+            self.evts.events.set_len(cnt);
+        }
+
+        evts.clear();
+        for i in 0..cnt {
+            let value = self.evts.events[i];
+            let mut ev_flag = EventFlags::empty();
+            if value.events.contains(EPOLLIN) {
+                ev_flag = ev_flag | FLAG_READ;
+            }
+            if value.events.contains(EPOLLOUT) {
+                ev_flag = ev_flag | FLAG_WRITE;
+            }
+            evts.push(EventEntry::new_evfd(value.data as u32, ev_flag));
+        }
+        Ok(cnt as u32)
+    }
+
+    pub fn register(&mut self, fd: u32, ev_events: EventFlags) -> io::Result<()> {
+
+        let info = EpollEvent {
+            events: ioevent_to_epoll(ev_events),
+            data: fd as u64,
+        };
+
+        epoll_ctl(self.epfd, EpollOp::EpollCtlAdd, fd as RawFd, &info).map_err(super::from_nix_error)
+    }
+
+    pub fn deregister(&mut self, fd: u32, ev_events: EventFlags) -> io::Result<()> {
+        let info = EpollEvent {
+            events: ioevent_to_epoll(ev_events),
+            data: 0,
+        };
+
+        epoll_ctl(self.epfd, EpollOp::EpollCtlDel, fd as RawFd, &info).map_err(super::from_nix_error)
     }
 }
 
-bitflags!(
-    #[repr(C)]
-    flags EpollEventKind: u32 {
-        const EPOLLIN = 0x001,
-        const EPOLLPRI = 0x002,
-        const EPOLLOUT = 0x004,
-        const EPOLLRDNORM = 0x040,
-        const EPOLLRDBAND = 0x080,
-        const EPOLLWRNORM = 0x100,
-        const EPOLLWRBAND = 0x200,
-        const EPOLLMSG = 0x400,
-        const EPOLLERR = 0x008,
-        const EPOLLHUP = 0x010,
-        const EPOLLRDHUP = 0x2000,
-        const EPOLLWAKEUP = 1 << 29,
-        const EPOLLONESHOT = 1 << 30,
-        const EPOLLET = 1 << 31,
-    }
-);
 
-// impl fmt::Debug for EpollEventKind {
-//     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-//         let variants = [
-//             (EPOLLIN,       "EPOLLIN"),
-//             (EPOLLPRI,      "EPOLLPRI"),
-//             (EPOLLOUT,      "EPOLLOUT"),
-//             (EPOLLRDNORM,   "EPOLLRDNORM"),
-//             (EPOLLRDBAND,   "EPOLLRDBAND"),
-//             (EPOLLWRNORM,   "EPOLLWRNORM"),
-//             (EPOLLWRBAND,   "EPOLLWRBAND"),
-//             (EPOLLMSG,      "EPOLLMSG"),
-//             (EPOLLERR,      "EPOLLERR"),
-//             (EPOLLHUP,      "EPOLLHUP"),
-//             (EPOLLRDHUP,    "EPOLLRDHUP"),
-//             (EPOLLWAKEUP,   "EPOLLWAKEUP"),
-//             (EPOLLONESHOT,  "EPOLLONESHOT"),
-//             (EPOLLET,       "EPOLLET")];
+fn ioevent_to_epoll(ev_events: EventFlags) -> EpollEventKind {
+    let mut kind = EpollEventKind::empty();
 
-// let mut first = true;
-
-//         for &(val, name) in variants.iter() {
-//             if self.contains(val) {
-//                 if first {
-//                     first = false;
-//                     try!(write!(fmt, "{}", name));
-//                 } else {
-//                     try!(write!(fmt, "|{}", name));
-//                 }
-//             }
-//         }
-
-//         Ok(())
-//     }
-// }
-
-
-#[derive(Clone, Copy)]
-#[repr(C)]
-pub enum EpollOp {
-    EpollCtlAdd = 1,
-    EpollCtlDel = 2,
-    EpollCtlMod = 3,
-}
-
-#[cfg(all(target_os = "android", not(target_arch = "x86_64")))]
-#[derive(Clone, Copy)]
-#[repr(C)]
-pub struct EpollEvent {
-    pub events: EpollEventKind,
-    pub data: u64,
-}
-
-#[cfg(all(target_os = "android", not(target_arch = "x86_64")))]
-#[test]
-fn test_epoll_event_size() {
-    use std::mem::size_of;
-    assert_eq!(size_of::<EpollEvent>(), 16);
-}
-
-#[cfg(any(not(target_os = "android"), target_arch = "x86_64"))]
-#[derive(Clone, Copy)]
-#[repr(C, packed)]
-pub struct EpollEvent {
-    pub events: EpollEventKind,
-    pub data: u64,
-}
-
-#[inline]
-pub fn epoll_create() -> Result<RawFd> {
-    let res = unsafe { ffi::epoll_create(1024) };
-
-    if res < 0 {
-        return Err(Error::last_os_error());
+    if ev_events.contains(FLAG_READ) {
+        kind.insert(EPOLLIN);
     }
 
-    Ok(res)
+    if ev_events.contains(FLAG_WRITE) {
+        kind.insert(EPOLLOUT);
+    }
+    // kind.insert(EPOLLET);
+    kind
 }
 
-#[inline]
-pub fn epoll_ctl(epfd: RawFd, op: EpollOp, fd: RawFd, event: &EpollEvent) -> Result<()> {
-    let res = unsafe { ffi::epoll_ctl(epfd, op as c_int, fd, event as *const EpollEvent) };
-    if res != 0 {
-        return Err(Error::last_os_error());
+impl Drop for Selector {
+    fn drop(&mut self) {
+        let _ = close(self.epfd);
     }
-    Ok(())
 }
 
-#[inline]
-pub fn epoll_wait(epfd: RawFd, events: &mut [EpollEvent], timeout_ms: isize) -> Result<usize> {
-    let res = unsafe {
-        ffi::epoll_wait(epfd,
-                        events.as_mut_ptr(),
-                        events.len() as c_int,
-                        timeout_ms as c_int)
-    };
+pub struct Events {
+    events: Vec<EpollEvent>,
+}
 
-    if res < 0 {
-        return Err(Error::last_os_error());
+impl Events {
+    pub fn new() -> Events {
+        Events { events: Vec::with_capacity(1024) }
     }
-
-    Ok(res as usize)
 }
