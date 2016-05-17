@@ -25,7 +25,7 @@ impl Selector {
     }
 
     pub fn select(&mut self, evts: &mut Vec<EventEntry>, timeout_ms: u32) -> io::Result<u32> {
-        use std::{isize, slice};
+        use std::{isize};
 
         let timeout_ms = if timeout_ms as isize >= isize::MAX {
             isize::MAX
@@ -68,7 +68,7 @@ impl Selector {
         self.flush_changes()
     }
 
-    pub fn deregister(&mut self, fd: u32, ev_events: EventFlags) -> io::Result<()> {
+    pub fn deregister(&mut self, fd: u32, _ev_events: EventFlags) -> io::Result<()> {
         self.ev_push(fd as RawFd, EventFilter::EVFILT_READ, EV_DELETE);
         self.ev_push(fd as RawFd, EventFilter::EVFILT_WRITE, EV_DELETE);
         self.flush_changes()
