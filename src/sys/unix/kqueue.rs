@@ -1,4 +1,3 @@
-use {io, EventSet, PollOpt, Token};
 use event::{self, Event};
 use nix::unistd::close;
 use nix::sys::event::{EventFilter, EventFlag, FilterFlag, KEvent, kqueue, kevent, kevent_ts};
@@ -6,7 +5,7 @@ use nix::sys::event::{EV_ADD, EV_CLEAR, EV_DELETE, EV_DISABLE, EV_ENABLE, EV_EOF
 use libc::{timespec, time_t, c_long};
 use std::{fmt, slice};
 use std::os::unix::io::RawFd;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use {EventEntry, EventFlags, FLAG_READ, FLAG_WRITE};
 
 #[derive(Debug)]
 pub struct Selector {
@@ -33,7 +32,7 @@ impl Selector {
             timeout_ms as isize
         };
 
-        let cnt = try!(kevent_ts(self.kq, &[], self.evts.as_mut_slice(), timeout)
+        let cnt = try!(kevent_ts(self.kq, &[], self.evts.as_mut_slice(), timeout_ms)
                                   .map_err(super::from_nix_error));
 
         evts.clear();
@@ -54,15 +53,15 @@ impl Selector {
 
     pub fn register(&mut self, fd: u32, ev_events: EventFlags) -> io::Result<()> {
 
-        self.ev_register(fd, EventFilter::EVFILT_READ, ev_events.contains(FLAG_READ));
-        self.ev_register(fd, EventFilter::EVFILT_WRITE, ev_events.contains(FLAG_WRITE));
+        self.ev_register(fd as RawFd, EventFilter::EVFILT_READ, ev_events.contains(FLAG_READ));
+        self.ev_register(fd as RawFd, EventFilter::EVFILT_WRITE, ev_events.contains(FLAG_WRITE));
 
         self.flush_changes()
     }
 
     pub fn deregister(&mut self, fd: u32, ev_events: EventFlags) -> io::Result<()> {
-        self.ev_push(fd, EventFilter::EVFILT_READ, EV_DELETE);
-        self.ev_push(fd, EventFilter::EVFILT_WRITE, EV_DELETE);
+        self.ev_push(fd as RawFd, EventFilter::EVFILT_READ, EV_DELETE);
+        self.ev_push(fd as RawFd, EventFilter::EVFILT_WRITE, EV_DELETE);
         self.flush_changes()
     }
 
