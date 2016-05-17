@@ -39,6 +39,9 @@ impl Selector {
 
         let cnt = try!(kevent_ts(self.kq, &[], self.evts.as_mut_slice(), Some(timeout))
                                   .map_err(super::from_nix_error));
+        if cnt == 0 {
+            return Ok(0);
+        }
 
         evts.clear();
         for i in 0..cnt {
@@ -116,7 +119,7 @@ pub struct Events {
 impl Events {
     pub fn new() -> Events {
         Events {
-            sys_events: Vec::with_capacity(1024),
+            sys_events: Vec::new(1024),
         }
     }
 
