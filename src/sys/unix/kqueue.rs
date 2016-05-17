@@ -32,7 +32,7 @@ impl Selector {
             timeout_ms as isize
         };
 
-        let cnt = try!(kevent_ts(self.kq, &[], self.evts.as_mut_slice(), timeout_ms)
+        let cnt = try!(kevent_ts(self.kq, &[], self.evts.as_mut_slice(), Some(timeout_ms))
                                   .map_err(super::from_nix_error));
 
         evts.clear();
@@ -48,7 +48,7 @@ impl Selector {
 
             evts.push(EventEntry::new_evfd(e.ident as u32, ev_flag));
         }
-        Ok(())
+        Ok(cnt as u32)
     }
 
     pub fn register(&mut self, fd: u32, ev_events: EventFlags) -> io::Result<()> {
@@ -78,7 +78,7 @@ impl Selector {
     }
 
     fn ev_push(&mut self, fd: RawFd, filter: EventFilter, flags: EventFlag) {
-        self.changes.sys_events.push(
+        self.evts.sys_events.push(
             KEvent {
                 ident: fd as ::libc::uintptr_t,
                 filter: filter,
@@ -115,17 +115,6 @@ impl Events {
             sys_events: Vec::with_capacity(1024),
         }
     }
-
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.events.len()
-    }
-
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.events.is_empty()
-    }
-
 
     fn as_slice(&self) -> &[KEvent] {
         unsafe {
