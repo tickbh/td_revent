@@ -1,4 +1,3 @@
-use event::{self, Event};
 use nix::unistd::close;
 use nix::sys::event::{EventFilter, EventFlag, FilterFlag, KEvent, kqueue, kevent, kevent_ts};
 use nix::sys::event::{EV_ADD, EV_CLEAR, EV_DELETE, EV_DISABLE, EV_ENABLE, EV_EOF, EV_ERROR, EV_ONESHOT};
@@ -38,7 +37,7 @@ impl Selector {
             tv_nsec: ((timeout_ms % 1000) * 1_000_000) as c_long
         };
 
-        let cnt = try!(kevent_ts(self.kq, &[], self.evts.as_mut_slice(), timeout)
+        let cnt = try!(kevent_ts(self.kq, &[], self.evts.as_mut_slice(), Some(timeout))
                                   .map_err(super::from_nix_error));
 
         evts.clear();
