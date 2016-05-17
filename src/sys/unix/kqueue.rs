@@ -4,6 +4,7 @@ use nix::sys::event::{EventFilter, EventFlag, FilterFlag, KEvent, kqueue, kevent
 use nix::sys::event::{EV_ADD, EV_CLEAR, EV_DELETE, EV_DISABLE, EV_ENABLE, EV_EOF, EV_ERROR, EV_ONESHOT};
 use libc::{timespec, time_t, c_long};
 use std::{fmt, slice};
+use std::io;
 use std::os::unix::io::RawFd;
 use {EventEntry, EventFlags, FLAG_READ, FLAG_WRITE};
 
@@ -32,7 +33,12 @@ impl Selector {
             timeout_ms as isize
         };
 
-        let cnt = try!(kevent_ts(self.kq, &[], self.evts.as_mut_slice(), Some(timeout_ms))
+        let timeout = timespec {
+            tv_sec: (timeout_ms / 1000) as time_t,
+            tv_nsec: ((timeout_ms % 1000) * 1_000_000) as c_long
+        };
+
+        let cnt = try!(kevent_ts(self.kq, &[], self.evts.as_mut_slice(), timeout)
                                   .map_err(super::from_nix_error));
 
         evts.clear();
@@ -88,7 +94,6 @@ impl Selector {
                 udata: 0
             });
     }
-
 
     fn flush_changes(&mut self) -> io::Result<()> {
         let result = kevent(self.kq, self.evts.as_slice(), &mut [], 0).map(|_| ())
