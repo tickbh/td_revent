@@ -1,6 +1,7 @@
 use nix::unistd::close;
-use nix::sys::event::{EventFilter, EventFlag, FilterFlag, KEvent, kqueue, kevent, kevent_ts};
-use nix::sys::event::{EV_ADD, EV_CLEAR, EV_DELETE, EV_DISABLE, EV_ENABLE, EV_EOF, EV_ERROR, EV_ONESHOT};
+// use nix::sys::event::{EventFilter, EventFlag, FilterFlag, KEvent, kqueue, kevent, kevent_ts};
+// use nix::sys::event::{EV_ADD, EV_CLEAR, EV_DELETE, EV_DISABLE, EV_ENABLE, EV_EOF, EV_ERROR, EV_ONESHOT};
+use nix::sys::event::*;
 use libc::{timespec, time_t, c_long};
 use std::{fmt, slice};
 use std::io;
@@ -39,8 +40,8 @@ impl Selector {
 
         let cnt = try!(kevent_ts(self.kq, &[], self.evts.as_mut_slice(), Some(timeout))
                                   .map_err(super::from_nix_error));
-        if cnt == 0 {
-            return Ok(0);
+        unsafe {
+            self.evts.sys_events.set_len(cnt);
         }
 
         evts.clear();
