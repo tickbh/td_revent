@@ -119,7 +119,7 @@ pub struct Events {
 impl Events {
     pub fn new() -> Events {
         Events {
-            sys_events: Vec::new(1024),
+            sys_events: Vec::with_capacity(1024),
         }
     }
 
