@@ -32,7 +32,7 @@ impl Timer {
             entry.ev_fd = self.calc_new_id();
         };
         let time_id = entry.ev_fd;
-        entry.tick_ms = time::precise_time_ns() / 1000 + entry.tick_step;
+        entry.tick_ms = self.now() + entry.tick_step;
         self.timer_queue.push(entry);
         time_id
     }
@@ -47,6 +47,7 @@ impl Timer {
                 ret = Some(entry);
             }
         }
+        self.time_sets.remove(&time_id);
         self.timer_queue = BinaryHeap::from(data);
         ret
     }
@@ -68,7 +69,7 @@ impl Timer {
 
     fn calc_new_id(&mut self) -> u32 {
         loop {
-            self.time_id += 1;
+            self.time_id = self.time_id.overflowing_add(1).0;
             self.time_id = cmp::max(self.time_id, 1);
             if self.time_sets.contains(&self.time_id) {
                 continue;

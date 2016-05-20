@@ -42,8 +42,6 @@ pub struct EventLoop {
 }
 
 
-// static mut el : *mut EventLoop = 0 as *mut _;
-
 impl EventLoop {
     pub fn new() -> io::Result<EventLoop> {
         EventLoop::configured(Default::default())
