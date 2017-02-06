@@ -33,6 +33,7 @@ impl Timer {
         };
         let time_id = entry.ev_fd;
         entry.tick_ms = self.now() + entry.tick_step;
+        self.time_sets.insert(time_id);
         self.timer_queue.push(entry);
         time_id
     }
@@ -64,7 +65,12 @@ impl Timer {
         if tm < self.tick_first().unwrap_or(tm + 1) {
             return None;
         }
-        self.timer_queue.pop()
+        if let Some(entry) = self.timer_queue.pop() {
+            self.time_sets.remove(&entry.ev_fd);
+            Some(entry)
+        } else {
+            None
+        }
     }
 
     fn calc_new_id(&mut self) -> u32 {
@@ -74,7 +80,6 @@ impl Timer {
             if self.time_sets.contains(&self.time_id) {
                 continue;
             }
-            self.time_sets.insert(self.time_id);
             break;
         }
         self.time_id
