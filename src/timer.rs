@@ -1,23 +1,43 @@
 use EventEntry;
 use std::fmt;
-use std::cmp;
+use std::cmp::{self, Ord, Ordering};
 use std::collections::BinaryHeap;
-use std::collections::HashSet;
+use std::collections::HashMap;
+use rbtree::RBTree;
+
 extern crate libc;
 extern crate time;
 
-
 pub struct Timer {
-    timer_queue: BinaryHeap<EventEntry>,
-    time_sets: HashSet<u32>,
+    timer_queue: RBTree<TreeKey, EventEntry>,
+    time_maps: HashMap<u32, u64>,
     time_id: u32,
 }
 
+#[derive(PartialEq, Eq)]
+struct TreeKey(u64, u32);
+
+impl Ord for TreeKey {
+    fn cmp(&self, other: &Self) -> Ordering {
+        if self.0 != other.0 {
+            return self.0.cmp(&other.0);
+        }
+        other.1.cmp(&self.1)
+    }
+}
+
+impl PartialOrd for TreeKey {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+
 impl Timer {
-    pub fn new(capacity: usize) -> Timer {
+    pub fn new() -> Timer {
         Timer {
-            timer_queue: BinaryHeap::with_capacity(capacity),
-            time_sets: HashSet::new(),
+            timer_queue: RBTree::new(),
+            time_maps: HashMap::new(),
             time_id: 0,
         }
     }
@@ -33,40 +53,34 @@ impl Timer {
         };
         let time_id = entry.ev_fd;
         entry.tick_ms = self.now() + entry.tick_step;
-        self.time_sets.insert(time_id);
-        self.timer_queue.push(entry);
+        self.time_maps.insert(time_id, entry.tick_ms);
+        self.timer_queue.insert(TreeKey(entry.tick_ms, time_id), entry);
         time_id
     }
 
     pub fn del_timer(&mut self, time_id: u32) -> Option<EventEntry> {
-        let mut ret: Option<EventEntry> = None;
-        let mut data = Vec::new();
-        while let Some(entry) = self.timer_queue.pop() {
-            if entry.ev_fd != time_id {
-                data.push(entry);
-            } else {
-                ret = Some(entry);
-            }
+        if !self.time_maps.contains_key(&time_id) {
+            return None;
         }
-        self.time_sets.remove(&time_id);
-        self.timer_queue = BinaryHeap::from(data);
-        ret
+        let mut ret: Option<EventEntry> = None;
+        let key = TreeKey(self.time_maps[&time_id], time_id);
+        self.time_maps.remove(&time_id);
+        self.timer_queue.remove(&key)
     }
 
     pub fn tick_first(&self) -> Option<u64> {
         self.timer_queue
-            .peek()
-            .map(|entry| Some(entry.tick_ms))
+            .get_first()
+            .map(|(key, _)| Some(key.0))
             .unwrap_or(None)
     }
-
 
     pub fn tick_time(&mut self, tm: u64) -> Option<EventEntry> {
         if tm < self.tick_first().unwrap_or(tm + 1) {
             return None;
         }
-        if let Some(entry) = self.timer_queue.pop() {
-            self.time_sets.remove(&entry.ev_fd);
+        if let Some((key, entry)) = self.timer_queue.pop_first() {
+            self.time_maps.remove(&key.1);
             Some(entry)
         } else {
             None
@@ -77,7 +91,7 @@ impl Timer {
         loop {
             self.time_id = self.time_id.overflowing_add(1).0;
             self.time_id = cmp::max(self.time_id, 1);
-            if self.time_sets.contains(&self.time_id) {
+            if self.time_maps.contains_key(&self.time_id) {
                 continue;
             }
             break;
@@ -88,7 +102,7 @@ impl Timer {
 
 impl fmt::Debug for Timer {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for entry in &(self.timer_queue) {
+        for (_, entry) in self.timer_queue.iter() {
             let _ = writeln!(f, "{:?}", entry);
         }
         write!(f, "")

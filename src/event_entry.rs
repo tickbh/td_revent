@@ -4,6 +4,8 @@ use std::ptr;
 use std::cmp::Ordering;
 use std::hash::Hash;
 use std::hash;
+use std::cmp::Ord;
+use std::any::Any;
 extern crate time;
 
 pub struct EventEntry {
@@ -11,21 +13,8 @@ pub struct EventEntry {
     pub tick_ms: u64,
     pub tick_step: u64,
     pub ev_events: EventFlags,
-    pub call_back: Option<fn(ev: &mut EventLoop, fd: u32, flag: EventFlags, data: *mut ()) -> i32>,
-    pub data: Option<*mut ()>,
-}
-
-impl Clone for EventEntry {
-    fn clone(&self) -> Self {
-        EventEntry {
-            ev_fd: self.ev_fd,
-            tick_ms: self.tick_ms,
-            tick_step: self.tick_step,
-            ev_events: self.ev_events,
-            call_back: self.call_back,
-            data: self.data,
-        }
-    }
+    pub call_back: Option<fn(ev: &mut EventLoop, fd: u32, flag: EventFlags, data: Option<&mut Box<Any>>) -> i32>,
+    pub data: Option<Box<Any>>,
 }
 
 impl EventEntry {
@@ -35,9 +24,9 @@ impl EventEntry {
                      call_back: Option<fn(ev: &mut EventLoop,
                                           fd: u32,
                                           flag: EventFlags,
-                                          data: *mut ())
+                                          data: Option<&mut Box<Any>>)
                                           -> i32>,
-                     data: Option<*mut ()>)
+                     data: Option<Box<Any>>)
                      -> EventEntry {
         EventEntry {
             tick_ms: time::precise_time_ns() / 1000 + tick_step,
@@ -55,9 +44,9 @@ impl EventEntry {
 
     pub fn new(ev_fd: u32,
                ev_events: EventFlags,
-               call_back: Option<fn(ev: &mut EventLoop, fd: u32, flag: EventFlags, data: *mut ())
+               call_back: Option<fn(ev: &mut EventLoop, fd: u32, flag: EventFlags, data: Option<&mut Box<Any>>)
                                     -> i32>,
-               data: Option<*mut ()>)
+               data: Option<Box<Any>>)
                -> EventEntry {
         EventEntry {
             tick_ms: 0,
@@ -80,14 +69,14 @@ impl EventEntry {
         }
     }
 
-    pub fn callback(&self, ev: &mut EventLoop, ev_events: EventFlags) -> i32 {
+    pub fn callback(&mut self, ev: &mut EventLoop, ev_events: EventFlags) -> i32 {
         if self.call_back.is_none() {
             return 0;
         }
         self.call_back.unwrap()(ev,
                                 self.ev_fd,
                                 ev_events,
-                                self.data.unwrap_or(ptr::null_mut()))
+                                self.data.as_mut())
     }
 }
 

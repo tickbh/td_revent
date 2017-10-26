@@ -8,6 +8,9 @@ extern crate ws2_32;
 
 extern crate nix;
 
+extern crate rbtree;
+extern crate psocket;
+
 mod event_loop;
 mod timer;
 mod event_flags;

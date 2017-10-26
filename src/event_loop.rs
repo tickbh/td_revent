@@ -48,7 +48,7 @@ impl EventLoop {
     }
 
     pub fn configured(config: EventLoopConfig) -> io::Result<EventLoop> {
-        let timer = Timer::new(config.timer_capacity);
+        let timer = Timer::new();
         let selector = try!(Selector::new());
         Ok(EventLoop {
             run: true,
@@ -94,13 +94,34 @@ impl EventLoop {
         let size = try!(self.selector.select(&mut self.evts, 0)) as usize;
         let evts : Vec<EventEntry> = self.evts.drain(..).collect();
         for evt in evts {
-            if self.event_maps.contains_key(&evt.ev_fd) {
-                let ev = self.event_maps[&evt.ev_fd].clone();
+            if let Some(mut ev) = self.event_maps.remove(&evt.ev_fd) {
                 ev.callback(self, evt.ev_events);
                 if !ev.ev_events.contains(FLAG_PERSIST) {
                     self.del_event(ev.ev_fd, ev.ev_events);
+                } else {
+                    self.event_maps.insert(ev.ev_fd, ev);
                 }
             }
+            // let del: Option<(u32, EventFlags)> = {
+            //     if let Some(ev) = self.event_maps.get_mut(&evt.ev_fd) {
+            //         ev.callback(self, evt.ev_events);
+            //         if !ev.ev_events.contains(FLAG_PERSIST) {
+            //             Some((ev.ev_fd, ev.ev_events))
+            //         } else {
+            //             None
+            //         }
+            //     } else {
+            //         None
+            //     }
+            // };
+            
+            // if self.event_maps.contains_key(&evt.ev_fd) {
+            //     let ev = self.event_maps[&evt.ev_fd].clone();
+            //     ev.callback(self, evt.ev_events);
+            //     if !ev.ev_events.contains(FLAG_PERSIST) {
+            //         self.del_event(ev.ev_fd, ev.ev_events);
+            //     }
+            // }
         }
 
         let is_op = self.timer_process();
@@ -134,7 +155,7 @@ impl EventLoop {
         let mut is_op = false;
         loop {
             match self.timer.tick_time(now) {
-                Some(entry) => {
+                Some(mut entry) => {
                     is_op = true;
                     let ret = entry.callback(self, EventFlags::empty());
                     if ret == 0 && entry.ev_events.contains(FLAG_PERSIST) {
