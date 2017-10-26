@@ -6,6 +6,16 @@ use std::collections::HashMap;
 use {EventFlags, FLAG_PERSIST};
 use std::io;
 
+pub const CALL_NONE: i32 = 0;
+pub const CALL_CONTINUE: i32 = 1;
+pub const CALL_OVER: i32 = 2;
+
+pub enum RetValue {
+    NONE,
+    CONTINUE,
+    OVER,
+}
+
 /// Configure EventLoop runtime details
 #[derive(Copy, Clone, Debug)]
 pub struct EventLoopConfig {
@@ -95,8 +105,11 @@ impl EventLoop {
         let evts : Vec<EventEntry> = self.evts.drain(..).collect();
         for evt in evts {
             if let Some(mut ev) = self.event_maps.remove(&evt.ev_fd) {
-                ev.callback(self, evt.ev_events);
-                if !ev.ev_events.contains(FLAG_PERSIST) {
+                let is_over = match ev.callback(self, evt.ev_events) {
+                    RetValue::OVER => true,
+                    _ => !ev.ev_events.contains(FLAG_PERSIST),
+                };
+                if is_over {
                     self.del_event(ev.ev_fd, ev.ev_events);
                 } else {
                     self.event_maps.insert(ev.ev_fd, ev);
@@ -157,8 +170,12 @@ impl EventLoop {
             match self.timer.tick_time(now) {
                 Some(mut entry) => {
                     is_op = true;
-                    let ret = entry.callback(self, EventFlags::empty());
-                    if ret == 0 && entry.ev_events.contains(FLAG_PERSIST) {
+                    let is_over = match entry.callback(self, EventFlags::empty()) {
+                        RetValue::OVER => true,
+                        _ => !entry.ev_events.contains(FLAG_PERSIST),
+                    };
+
+                    if !is_over {
                         let _ = self.add_timer(entry);
                     }
                 }

@@ -1,4 +1,4 @@
-pub use {EventFlags, FLAG_TIMEOUT, FLAG_READ, FLAG_WRITE, FLAG_PERSIST, EventLoop};
+pub use {EventFlags, FLAG_TIMEOUT, FLAG_READ, FLAG_WRITE, FLAG_PERSIST, EventLoop, RetValue};
 use std::fmt;
 use std::ptr;
 use std::cmp::Ordering;
@@ -13,7 +13,7 @@ pub struct EventEntry {
     pub tick_ms: u64,
     pub tick_step: u64,
     pub ev_events: EventFlags,
-    pub call_back: Option<fn(ev: &mut EventLoop, fd: u32, flag: EventFlags, data: Option<&mut Box<Any>>) -> i32>,
+    pub call_back: Option<fn(ev: &mut EventLoop, fd: u32, flag: EventFlags, data: Option<&mut Box<Any>>) -> RetValue>,
     pub data: Option<Box<Any>>,
 }
 
@@ -25,7 +25,7 @@ impl EventEntry {
                                           fd: u32,
                                           flag: EventFlags,
                                           data: Option<&mut Box<Any>>)
-                                          -> i32>,
+                                          -> RetValue>,
                      data: Option<Box<Any>>)
                      -> EventEntry {
         EventEntry {
@@ -45,7 +45,7 @@ impl EventEntry {
     pub fn new(ev_fd: u32,
                ev_events: EventFlags,
                call_back: Option<fn(ev: &mut EventLoop, fd: u32, flag: EventFlags, data: Option<&mut Box<Any>>)
-                                    -> i32>,
+                                    -> RetValue>,
                data: Option<Box<Any>>)
                -> EventEntry {
         EventEntry {
@@ -69,9 +69,9 @@ impl EventEntry {
         }
     }
 
-    pub fn callback(&mut self, ev: &mut EventLoop, ev_events: EventFlags) -> i32 {
+    pub fn callback(&mut self, ev: &mut EventLoop, ev_events: EventFlags) -> RetValue {
         if self.call_back.is_none() {
-            return 0;
+            return RetValue::NONE;
         }
         self.call_back.unwrap()(ev,
                                 self.ev_fd,

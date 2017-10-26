@@ -10,7 +10,7 @@ use self::psocket::TcpSocket;
 
 static mut s_count : i32 = 0; 
 
-fn client_read_callback(ev : &mut EventLoop, _fd : u32, _ : EventFlags, data : Option<&mut Box<Any>>) -> i32 {
+fn client_read_callback(ev : &mut EventLoop, _fd : u32, _ : EventFlags, data : Option<&mut Box<Any>>) -> RetValue {
     let client = data.unwrap().downcast_mut::<TcpSocket>().unwrap();
     println!("{:?}", client);
     let mut data : [u8; 1024] = [0; 1024];
@@ -23,9 +23,7 @@ fn client_read_callback(ev : &mut EventLoop, _fd : u32, _ : EventFlags, data : O
 
     println!("size = {:?}", size);
     if size <= 0 {
-        ev.del_event(client.get_socket_fd() as u32, FLAG_READ | FLAG_WRITE);
-        // drop(sock_mgr.client);
-        return 0;
+        return RetValue::OVER;
     }
     let count = unsafe {
         s_count = s_count + 1;
@@ -34,17 +32,16 @@ fn client_read_callback(ev : &mut EventLoop, _fd : u32, _ : EventFlags, data : O
 
     if count >= 6 {
         println!("client close the socket");
-        ev.del_event(client.get_socket_fd() as u32, FLAG_READ | FLAG_WRITE);
-        return 0;
+        return RetValue::OVER;
     } else {
         let str = String::from_utf8_lossy(&data[0..size]);
         println!("{:?}", str);
         client.write(&data[0..size]).unwrap();
     }
-    0
+    RetValue::NONE
 }
 
-fn server_read_callback(ev : &mut EventLoop, fd : u32, _ : EventFlags, data : Option<&mut Box<Any>>) -> i32 {
+fn server_read_callback(ev : &mut EventLoop, fd : u32, _ : EventFlags, data : Option<&mut Box<Any>>) -> RetValue {
     let socket = data.unwrap().downcast_mut::<TcpSocket>().unwrap();
 
     println!("{:?}", socket);
@@ -61,15 +58,15 @@ fn server_read_callback(ev : &mut EventLoop, fd : u32, _ : EventFlags, data : Op
 
     if size <= 0 {
         ev.shutdown();
-        return 0;
+        return RetValue::NONE;
     }
     let str = String::from_utf8_lossy(&data[0..size]);
     println!("{:?}", str);
     socket.write(&data[0..size]).unwrap();
-    0
+    RetValue::NONE
 }
 
-fn accept_callback(ev : &mut EventLoop, _fd : u32, _ : EventFlags, data : Option<&mut Box<Any>>) -> i32 {
+fn accept_callback(ev : &mut EventLoop, _fd : u32, _ : EventFlags, data : Option<&mut Box<Any>>) -> RetValue {
     let listener = data.unwrap().downcast_mut::<TcpSocket>().unwrap();
 
     let (mut new_socket, new_attr) = listener.accept().unwrap();
@@ -77,7 +74,7 @@ fn accept_callback(ev : &mut EventLoop, _fd : u32, _ : EventFlags, data : Option
 
     println!("{:?} attr is {:?}", new_socket, new_attr);
     ev.add_event(EventEntry::new(new_socket.get_socket_fd() as u32, FLAG_READ | FLAG_PERSIST, Some(server_read_callback), Some(Box::new(new_socket))));
-    0
+    RetValue::NONE
 }
 
 #[test]
