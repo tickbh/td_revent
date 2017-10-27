@@ -20,7 +20,7 @@ struct SocketManger {
 static mut s_count : i32 = 0; 
 
 fn client_read_callback(ev : &mut EventLoop, fd : u32, _ : EventFlags, data : Option<&mut Box<Any>>) -> RetValue {
-    let socket = data.unwrap().downcast_mut::<TcpSocket>().unwrap();
+    let socket = any_to_mut!(data, TcpSocket);
     println!("{:?}", socket);
     let mut data : [u8; 1024] = [0; 1024];
     let size = match socket.read(&mut data[..]) {
@@ -51,7 +51,7 @@ fn client_read_callback(ev : &mut EventLoop, fd : u32, _ : EventFlags, data : Op
 
 fn server_read_callback(ev : &mut EventLoop, fd : u32, _ : EventFlags, data : Option<&mut Box<Any>>) -> RetValue {
     println!("server_read_callback");
-    let socket = data.unwrap().downcast_mut::<TcpSocket>().unwrap();
+    let socket = any_to_mut!(data, TcpSocket);
 
     println!("{:?}", socket);
     let mut data : [u8; 1024] = [0; 1024];
@@ -75,7 +75,7 @@ fn server_read_callback(ev : &mut EventLoop, fd : u32, _ : EventFlags, data : Op
 }
 
 fn accept_callback(ev : &mut EventLoop, fd : u32, _ : EventFlags, data : Option<&mut Box<Any>>) -> RetValue {
-    let listener = data.unwrap().downcast_mut::<TcpSocket>().unwrap();
+    let listener = any_to_mut!(data, TcpSocket);
 
     let (mut new_socket, new_attr) = listener.accept().unwrap();
     new_socket.set_nonblocking(true);
