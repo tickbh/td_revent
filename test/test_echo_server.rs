@@ -1,5 +1,4 @@
 extern crate td_revent;
-extern crate net2;
 extern crate psocket;
 
 use td_revent::*;

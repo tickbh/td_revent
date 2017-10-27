@@ -51,7 +51,7 @@ impl Selector {
             if value.events.contains(EPOLLOUT) {
                 ev_flag = ev_flag | FLAG_WRITE;
             }
-            evts.push(EventEntry::new_evfd(value.data as u32, ev_flag));
+            evts.push(EventEntry::new_evfd(value.data as i32, ev_flag));
         }
         Ok(cnt as u32)
     }

@@ -55,7 +55,7 @@ impl Selector {
                 ev_flag = ev_flag | FLAG_WRITE;
             }
 
-            evts.push(EventEntry::new_evfd(e.ident as u32, ev_flag));
+            evts.push(EventEntry::new_evfd(e.ident as i32, ev_flag));
         }
         Ok(cnt as u32)
     }
