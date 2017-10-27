@@ -47,6 +47,9 @@ impl Timer {
 
     // ID = 0 为无效ID
     pub fn add_timer(&mut self, mut entry: EventEntry) -> i32 {
+        if entry.tick_step == 0 {
+            return 0;
+        }
         if entry.ev_fd == 0 {
             entry.ev_fd = self.calc_new_id();
         };

@@ -121,10 +121,14 @@ impl EventLoop {
         Ok(())
     }
 
+    /// 添加定时器, 如果time_step为0,则添加定时器失败
     pub fn add_timer(&mut self, entry: EventEntry) -> i32 {
         self.timer.add_timer(entry)
     }
 
+    /// 添加定时器,  tick_step变量表示每隔多少ms调用一次该回调
+    /// tick_repeat变量表示该定时器是否重复, 如果为true, 则会每tick_step ms进行调用一次, 直到回调返回RetValue::OVER, 或者被主动删除该定时器
+    /// 添加定时器, 如果time_step为0,则添加定时器失败
     pub fn add_new_timer(&mut self, tick_step: u64,
                      tick_repeat: bool,
                      call_back: Option<fn(ev: &mut EventLoop,
@@ -136,15 +140,18 @@ impl EventLoop {
         self.timer.add_timer(EventEntry::new_timer(tick_step, tick_repeat, call_back, data))
     }
 
+    /// 删除指定的定时器id, 定时器内部实现细节为红黑树, 删除定时器的时间为O(logn), 如果存在该定时器, 则返回相关的定时器信息
     pub fn del_timer(&mut self, time_id: i32) -> Option<EventEntry> {
         self.timer.del_timer(time_id)
     }
 
+    /// 添加定时器
     pub fn add_event(&mut self, entry: EventEntry) {
         let _ = self.selector.register(entry.ev_fd, entry.ev_events);
         self.event_maps.insert(entry.ev_fd, entry);
     }
 
+    /// 添加定时器, ev_fd为socket的句柄id, ev_events为监听读, 写, 持久的信息
     pub fn add_new_event(&mut self, ev_fd: i32,
                         ev_events: EventFlags,
                         call_back: Option<fn(ev: &mut EventLoop, fd: i32, flag: EventFlags, data: Option<&mut Box<Any>>)
@@ -153,11 +160,15 @@ impl EventLoop {
         self.add_event(EventEntry::new(ev_fd, ev_events, call_back, data))
     }
 
-    pub fn del_event(&mut self, ev_fd: i32, ev_events: EventFlags) {
+    /// 删除指定socket的句柄信息
+    pub fn del_event(&mut self, ev_fd: i32, ev_events: EventFlags) -> Option<EventEntry> {
         let _ = self.selector.deregister(ev_fd, ev_events);
-        self.event_maps.remove(&ev_fd);
+        self.event_maps.remove(&ev_fd)
     }
-
+    
+    /// 定时器的处理处理
+    /// 1.取出定时器的第一个, 如果第一个大于当前时间, 则跳出循环, 如果小于等于当前时间进入2
+    /// 2.调用回调函数, 如果回调返回OVER或者定时器不是循环定时器, 则删除定时器, 否则把该定时器重时添加到列表
     fn timer_process(&mut self) -> bool {
         let now = self.timer.now();
         let mut is_op = false;
