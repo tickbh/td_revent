@@ -6,12 +6,9 @@ use std::collections::HashMap;
 use {EventFlags, FLAG_PERSIST};
 use std::io;
 
-pub const CALL_NONE: i32 = 0;
-pub const CALL_CONTINUE: i32 = 1;
-pub const CALL_OVER: i32 = 2;
 
 pub enum RetValue {
-    NONE,
+    OK,
     CONTINUE,
     OVER,
 }

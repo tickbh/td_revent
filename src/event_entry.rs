@@ -71,7 +71,7 @@ impl EventEntry {
 
     pub fn callback(&mut self, ev: &mut EventLoop, ev_events: EventFlags) -> RetValue {
         if self.call_back.is_none() {
-            return RetValue::NONE;
+            return RetValue::OK;
         }
         self.call_back.unwrap()(ev,
                                 self.ev_fd,

@@ -38,7 +38,7 @@ fn client_read_callback(ev : &mut EventLoop, _fd : u32, _ : EventFlags, data : O
         println!("{:?}", str);
         client.write(&data[0..size]).unwrap();
     }
-    RetValue::NONE
+    RetValue::OK
 }
 
 fn server_read_callback(ev : &mut EventLoop, fd : u32, _ : EventFlags, data : Option<&mut Box<Any>>) -> RetValue {
@@ -58,12 +58,12 @@ fn server_read_callback(ev : &mut EventLoop, fd : u32, _ : EventFlags, data : Op
 
     if size <= 0 {
         ev.shutdown();
-        return RetValue::NONE;
+        return RetValue::OK;
     }
     let str = String::from_utf8_lossy(&data[0..size]);
     println!("{:?}", str);
     socket.write(&data[0..size]).unwrap();
-    RetValue::NONE
+    RetValue::OK
 }
 
 fn accept_callback(ev : &mut EventLoop, _fd : u32, _ : EventFlags, data : Option<&mut Box<Any>>) -> RetValue {
@@ -74,7 +74,7 @@ fn accept_callback(ev : &mut EventLoop, _fd : u32, _ : EventFlags, data : Option
 
     println!("{:?} attr is {:?}", new_socket, new_attr);
     ev.add_event(EventEntry::new(new_socket.get_socket_fd() as u32, FLAG_READ | FLAG_PERSIST, Some(server_read_callback), Some(Box::new(new_socket))));
-    RetValue::NONE
+    RetValue::OK
 }
 
 #[test]
