@@ -1,10 +1,7 @@
 pub use {EventFlags, FLAG_TIMEOUT, FLAG_READ, FLAG_WRITE, FLAG_PERSIST, EventLoop, RetValue};
 use std::fmt;
-use std::ptr;
-use std::cmp::Ordering;
-use std::hash::Hash;
-use std::hash;
-use std::cmp::Ord;
+use std::cmp::{Ord, Ordering};
+use std::hash::{self, Hash};
 use std::any::Any;
 extern crate time;
 

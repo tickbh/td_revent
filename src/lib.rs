@@ -25,6 +25,7 @@ pub use event_flags::{EventFlags, FLAG_TIMEOUT, FLAG_READ, FLAG_WRITE, FLAG_PERS
 pub use event_entry::EventEntry;
 pub use sys::{AsFd, FromFd};
 
+/// The macro convert Option<&mut Box<Any>> to &mut ty
 #[macro_export]
 macro_rules! any_to_mut {
     ( $x:expr, $t:ty ) => {
@@ -32,6 +33,7 @@ macro_rules! any_to_mut {
     };
 }
 
+/// The macro convert Option<&mut Box<Any>> to &ty
 #[macro_export]
 macro_rules! any_to_ref {
     ( $x:expr, $t:ty ) => {

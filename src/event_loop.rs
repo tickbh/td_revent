@@ -1,11 +1,10 @@
 #![allow(dead_code)]
-
 use {Timer, EventEntry};
 use sys::Selector;
 use std::collections::HashMap;
 use {EventFlags, FLAG_PERSIST};
 use std::io;
-
+use std::any::Any;
 
 pub enum RetValue {
     OK,
@@ -112,26 +111,6 @@ impl EventLoop {
                     self.event_maps.insert(ev.ev_fd, ev);
                 }
             }
-            // let del: Option<(u32, EventFlags)> = {
-            //     if let Some(ev) = self.event_maps.get_mut(&evt.ev_fd) {
-            //         ev.callback(self, evt.ev_events);
-            //         if !ev.ev_events.contains(FLAG_PERSIST) {
-            //             Some((ev.ev_fd, ev.ev_events))
-            //         } else {
-            //             None
-            //         }
-            //     } else {
-            //         None
-            //     }
-            // };
-            
-            // if self.event_maps.contains_key(&evt.ev_fd) {
-            //     let ev = self.event_maps[&evt.ev_fd].clone();
-            //     ev.callback(self, evt.ev_events);
-            //     if !ev.ev_events.contains(FLAG_PERSIST) {
-            //         self.del_event(ev.ev_fd, ev.ev_events);
-            //     }
-            // }
         }
 
         let is_op = self.timer_process();
@@ -146,6 +125,17 @@ impl EventLoop {
         self.timer.add_timer(entry)
     }
 
+    pub fn add_new_timer(&mut self, tick_step: u64,
+                     tick_repeat: bool,
+                     call_back: Option<fn(ev: &mut EventLoop,
+                                          fd: u32,
+                                          flag: EventFlags,
+                                          data: Option<&mut Box<Any>>)
+                                          -> RetValue>,
+                     data: Option<Box<Any>>) -> u32 {
+        self.timer.add_timer(EventEntry::new_timer(tick_step, tick_repeat, call_back, data))
+    }
+
     pub fn del_timer(&mut self, time_id: u32) -> Option<EventEntry> {
         self.timer.del_timer(time_id)
     }
@@ -153,6 +143,14 @@ impl EventLoop {
     pub fn add_event(&mut self, entry: EventEntry) {
         let _ = self.selector.register(entry.ev_fd, entry.ev_events);
         self.event_maps.insert(entry.ev_fd, entry);
+    }
+
+    pub fn add_new_event(&mut self, ev_fd: u32,
+                        ev_events: EventFlags,
+                        call_back: Option<fn(ev: &mut EventLoop, fd: u32, flag: EventFlags, data: Option<&mut Box<Any>>)
+                                                -> RetValue>,
+                        data: Option<Box<Any>>) {
+        self.add_event(EventEntry::new(ev_fd, ev_events, call_back, data))
     }
 
     pub fn del_event(&mut self, ev_fd: u32, ev_events: EventFlags) {

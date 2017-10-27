@@ -1,29 +1,28 @@
 use td_revent::*;
 use std::fmt;
-use std::ptr;
+use std::any::Any;
 
-static mut s_count : i32 = 0;
-static mut s_delTimer : u32 = 0;
+static mut S_COUNT : i32 = 0;
+static mut S_DEL_TIMER : u32 = 0;
 
 //timer return no success(0) will no be repeat
-fn time_callback(ev : &mut EventLoop, fd : u32, _ : EventFlags, data : *mut ()) -> i32 {
-    let obj : *mut Point = data as *mut Point;
-    if obj.is_null() {
-        println!("data is null {:?}", data);
-        let count = unsafe { s_count = s_count + 1; s_count };
+fn time_callback(ev : &mut EventLoop, fd : u32, _ : EventFlags, data : Option<&mut Box<Any>>) -> RetValue {
+    if data.is_none() {
+        println!("data is none");
+        let count = unsafe { S_COUNT = S_COUNT + 1; S_COUNT };
         if count >= 5  {
             ev.shutdown();
         }
     } else {
-        let obj : &mut Point = unsafe { &mut *obj };
-        obj.y = obj.y+1;
+        let obj = any_to_mut!(data, Point);
+        obj.y = obj.y + 1;
         println!("callback {:?}", obj);
     }
 
-    if unsafe { s_delTimer == fd } {
-        return -1;
+    if unsafe { S_DEL_TIMER == fd } {
+        return RetValue::OVER;
     }
-    0
+    RetValue::OK
 }
 
 #[derive(Default, Debug, Clone)]
@@ -49,12 +48,12 @@ pub fn test_timer() {
     println!("Starting TEST_TIMER");
     let mut event_loop : EventLoop = EventLoop::new().unwrap();
     let p = Point { x : 10, y : 20 };
-    event_loop.add_timer(EventEntry::new_timer(100, false, Some(time_callback), Some( &p as *const _ as *mut () )));
+
+    event_loop.add_timer(EventEntry::new_timer(100, false, Some(time_callback), Some( Box::new(p) )));
     unsafe {
-        s_delTimer = event_loop.add_timer(EventEntry::new_timer(150, true, Some(time_callback), Some( &p as *const _ as *mut () )));
+        S_DEL_TIMER = event_loop.add_timer(EventEntry::new_timer(150, true, Some(time_callback), None));
     }
-    event_loop.add_timer(EventEntry::new_timer(200, true, Some(time_callback), Some( ptr::null_mut() )));
+    event_loop.add_timer(EventEntry::new_timer(200, true, Some(time_callback), None));
     event_loop.run().unwrap();
-    assert!(p.y == 22);
-    assert!(unsafe { s_count } == 5);
+    assert!(unsafe { S_COUNT } == 5);
 }

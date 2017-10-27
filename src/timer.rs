@@ -1,7 +1,6 @@
 use EventEntry;
 use std::fmt;
 use std::cmp::{self, Ord, Ordering};
-use std::collections::BinaryHeap;
 use std::collections::HashMap;
 use rbtree::RBTree;
 
@@ -62,7 +61,6 @@ impl Timer {
         if !self.time_maps.contains_key(&time_id) {
             return None;
         }
-        let mut ret: Option<EventEntry> = None;
         let key = TreeKey(self.time_maps[&time_id], time_id);
         self.time_maps.remove(&time_id);
         self.timer_queue.remove(&key)

@@ -5,13 +5,12 @@ extern crate psocket;
 
 use td_revent::*;
 use std::io::prelude::*;
-use std::mem;
 use std::any::Any;
 use self::psocket::TcpSocket;
 
-static mut s_count : i32 = 0; 
+static mut S_COUNT : i32 = 0; 
 
-fn client_read_callback(ev : &mut EventLoop, _fd : u32, _ : EventFlags, data : Option<&mut Box<Any>>) -> RetValue {
+fn client_read_callback(_ev : &mut EventLoop, _fd : u32, _ : EventFlags, data : Option<&mut Box<Any>>) -> RetValue {
     let client = any_to_mut!(data, TcpSocket);
     // let client = data.unwrap().downcast_mut::<TcpSocket>().unwrap();
     println!("{:?}", client);
@@ -28,8 +27,8 @@ fn client_read_callback(ev : &mut EventLoop, _fd : u32, _ : EventFlags, data : O
         return RetValue::OVER;
     }
     let count = unsafe {
-        s_count = s_count + 1;
-        s_count
+        S_COUNT = S_COUNT + 1;
+        S_COUNT
     };
 
     if count >= 6 {
@@ -43,7 +42,7 @@ fn client_read_callback(ev : &mut EventLoop, _fd : u32, _ : EventFlags, data : O
     RetValue::OK
 }
 
-fn server_read_callback(ev : &mut EventLoop, fd : u32, _ : EventFlags, data : Option<&mut Box<Any>>) -> RetValue {
+fn server_read_callback(ev : &mut EventLoop, _fd : u32, _ : EventFlags, data : Option<&mut Box<Any>>) -> RetValue {
     let socket = any_to_mut!(data, TcpSocket);
 
     println!("{:?}", socket);
@@ -72,10 +71,10 @@ fn accept_callback(ev : &mut EventLoop, _fd : u32, _ : EventFlags, data : Option
     let listener = any_to_mut!(data, TcpSocket);
 
     let (mut new_socket, new_attr) = listener.accept().unwrap();
-    new_socket.set_nonblocking(true);
+    let _ = new_socket.set_nonblocking(true);
 
     println!("{:?} attr is {:?}", new_socket, new_attr);
-    ev.add_event(EventEntry::new(new_socket.get_socket_fd() as u32, FLAG_READ | FLAG_PERSIST, Some(server_read_callback), Some(Box::new(new_socket))));
+    ev.add_new_event(new_socket.get_socket_fd() as u32, FLAG_READ | FLAG_PERSIST, Some(server_read_callback), Some(Box::new(new_socket)));
     RetValue::OK
 }
 
@@ -86,21 +85,21 @@ pub fn test_base_echo() {
 
     let addr = "127.0.0.1:10009";
     let mut listener = TcpSocket::bind(&addr).unwrap();
-    listener.set_nonblocking(true);
+    let _ = listener.set_nonblocking(true);
 
     let mut client = TcpSocket::connect(&addr).unwrap();
-    listener.set_nonblocking(true);
+    let _ = client.set_nonblocking(true);
 
     client.write(b"hello world").unwrap();
 
     // let mut sock_mgr = SocketManger { listener : listener, client : client };
-    event_loop.add_event(EventEntry::new(listener.get_socket_fd() as u32, FLAG_READ | FLAG_PERSIST, Some(accept_callback), Some(Box::new(listener))));
-    event_loop.add_event(EventEntry::new(client.get_socket_fd() as u32, FLAG_READ | FLAG_PERSIST, Some(client_read_callback), Some(Box::new(client))));
+    event_loop.add_new_event(listener.get_socket_fd() as u32, FLAG_READ | FLAG_PERSIST, Some(accept_callback), Some(Box::new(listener)));
+    event_loop.add_new_event(client.get_socket_fd() as u32, FLAG_READ | FLAG_PERSIST, Some(client_read_callback), Some(Box::new(client)));
 
     // mem::forget(listener);
     // mem::forget(client);
     event_loop.run().unwrap();
 
-    assert!(unsafe { s_count } == 6);
+    assert!(unsafe { S_COUNT } == 6);
 }
 

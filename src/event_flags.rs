@@ -1,5 +1,3 @@
-
-
 bitflags! {
         flags EventFlags: u32 {
             const FLAG_TIMEOUT 	 = 0b00000001,
