@@ -62,14 +62,14 @@ impl Selector {
 
             if self.read_sets.fd_count > 0 {
                 for i in 0..self.read_sets.fd_count {
-                    evts.push(EventEntry::new_evfd(self.read_sets.fd_array[i as usize] as u32,
+                    evts.push(EventEntry::new_evfd(self.read_sets.fd_array[i as usize] as i32,
                                                    FLAG_READ));
                 }
                 size += self.read_sets.fd_count;
             }
             if self.write_sets.fd_count > 0 {
                 for i in 0..self.write_sets.fd_count {
-                    evts.push(EventEntry::new_evfd(self.write_sets.fd_array[i as usize] as u32,
+                    evts.push(EventEntry::new_evfd(self.write_sets.fd_array[i as usize] as i32,
                                                    FLAG_WRITE));
                 }
                 size += self.write_sets.fd_count;
@@ -78,7 +78,7 @@ impl Selector {
         Ok(size)
     }
 
-    pub fn register(&mut self, fd: u32, ev_events: EventFlags) {
+    pub fn register(&mut self, fd: i32, ev_events: EventFlags) {
         let fd = fd as SOCKET;
         if ev_events.contains(FLAG_READ) && !self.read_sockets.contains(&fd) {
             self.read_sockets.push(fd);
@@ -88,7 +88,7 @@ impl Selector {
         }
     }
 
-    pub fn deregister(&mut self, fd: u32, flag: EventFlags) {
+    pub fn deregister(&mut self, fd: i32, flag: EventFlags) {
         let fd = fd as SOCKET;
         fn search_index(vec: &Vec<SOCKET>, value: &SOCKET) -> Option<usize> {
             for (i, v) in vec.iter().enumerate() {

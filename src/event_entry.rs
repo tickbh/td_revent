@@ -6,11 +6,11 @@ use std::any::Any;
 extern crate time;
 
 pub struct EventEntry {
-    pub ev_fd: u32,
+    pub ev_fd: i32,
     pub tick_ms: u64,
     pub tick_step: u64,
     pub ev_events: EventFlags,
-    pub call_back: Option<fn(ev: &mut EventLoop, fd: u32, flag: EventFlags, data: Option<&mut Box<Any>>) -> RetValue>,
+    pub call_back: Option<fn(ev: &mut EventLoop, fd: i32, flag: EventFlags, data: Option<&mut Box<Any>>) -> RetValue>,
     pub data: Option<Box<Any>>,
 }
 
@@ -19,7 +19,7 @@ impl EventEntry {
     pub fn new_timer(tick_step: u64,
                      tick_repeat: bool,
                      call_back: Option<fn(ev: &mut EventLoop,
-                                          fd: u32,
+                                          fd: i32,
                                           flag: EventFlags,
                                           data: Option<&mut Box<Any>>)
                                           -> RetValue>,
@@ -39,9 +39,9 @@ impl EventEntry {
         }
     }
 
-    pub fn new(ev_fd: u32,
+    pub fn new(ev_fd: i32,
                ev_events: EventFlags,
-               call_back: Option<fn(ev: &mut EventLoop, fd: u32, flag: EventFlags, data: Option<&mut Box<Any>>)
+               call_back: Option<fn(ev: &mut EventLoop, fd: i32, flag: EventFlags, data: Option<&mut Box<Any>>)
                                     -> RetValue>,
                data: Option<Box<Any>>)
                -> EventEntry {
@@ -55,7 +55,7 @@ impl EventEntry {
         }
     }
 
-    pub fn new_evfd(ev_fd: u32, ev_events: EventFlags) -> EventEntry {
+    pub fn new_evfd(ev_fd: i32, ev_events: EventFlags) -> EventEntry {
         EventEntry {
             tick_ms: 0,
             tick_step: 0,

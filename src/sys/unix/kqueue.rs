@@ -60,7 +60,7 @@ impl Selector {
         Ok(cnt as u32)
     }
 
-    pub fn register(&mut self, fd: u32, ev_events: EventFlags) -> io::Result<()> {
+    pub fn register(&mut self, fd: i32, ev_events: EventFlags) -> io::Result<()> {
 
         self.ev_register(fd as RawFd, EventFilter::EVFILT_READ, ev_events.contains(FLAG_READ));
         self.ev_register(fd as RawFd, EventFilter::EVFILT_WRITE, ev_events.contains(FLAG_WRITE));
@@ -68,7 +68,7 @@ impl Selector {
         self.flush_changes()
     }
 
-    pub fn deregister(&mut self, fd: u32, _ev_events: EventFlags) -> io::Result<()> {
+    pub fn deregister(&mut self, fd: i32, _ev_events: EventFlags) -> io::Result<()> {
         self.ev_push(fd as RawFd, EventFilter::EVFILT_READ, EV_DELETE);
         self.ev_push(fd as RawFd, EventFilter::EVFILT_WRITE, EV_DELETE);
         self.flush_changes()

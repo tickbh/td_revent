@@ -3,10 +3,10 @@ use std::fmt;
 use std::any::Any;
 
 static mut S_COUNT : i32 = 0;
-static mut S_DEL_TIMER : u32 = 0;
+static mut S_DEL_TIMER : i32 = 0;
 
 //timer return no success(0) will no be repeat
-fn time_callback(ev : &mut EventLoop, fd : u32, _ : EventFlags, data : Option<&mut Box<Any>>) -> RetValue {
+fn time_callback(ev : &mut EventLoop, fd : i32, _ : EventFlags, data : Option<&mut Box<Any>>) -> RetValue {
     if data.is_none() {
         println!("data is none");
         let count = unsafe { S_COUNT = S_COUNT + 1; S_COUNT };

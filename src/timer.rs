@@ -9,12 +9,12 @@ extern crate time;
 
 pub struct Timer {
     timer_queue: RBTree<TreeKey, EventEntry>,
-    time_maps: HashMap<u32, u64>,
-    time_id: u32,
+    time_maps: HashMap<i32, u64>,
+    time_id: i32,
 }
 
 #[derive(PartialEq, Eq)]
-struct TreeKey(u64, u32);
+struct TreeKey(u64, i32);
 
 impl Ord for TreeKey {
     fn cmp(&self, other: &Self) -> Ordering {
@@ -46,7 +46,7 @@ impl Timer {
     }
 
     // ID = 0 为无效ID
-    pub fn add_timer(&mut self, mut entry: EventEntry) -> u32 {
+    pub fn add_timer(&mut self, mut entry: EventEntry) -> i32 {
         if entry.ev_fd == 0 {
             entry.ev_fd = self.calc_new_id();
         };
@@ -57,7 +57,7 @@ impl Timer {
         time_id
     }
 
-    pub fn del_timer(&mut self, time_id: u32) -> Option<EventEntry> {
+    pub fn del_timer(&mut self, time_id: i32) -> Option<EventEntry> {
         if !self.time_maps.contains_key(&time_id) {
             return None;
         }
@@ -85,7 +85,7 @@ impl Timer {
         }
     }
 
-    fn calc_new_id(&mut self) -> u32 {
+    fn calc_new_id(&mut self) -> i32 {
         loop {
             self.time_id = self.time_id.overflowing_add(1).0;
             self.time_id = cmp::max(self.time_id, 1);

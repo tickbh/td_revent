@@ -56,7 +56,7 @@ impl Selector {
         Ok(cnt as u32)
     }
 
-    pub fn register(&mut self, fd: u32, ev_events: EventFlags) -> io::Result<()> {
+    pub fn register(&mut self, fd: i32, ev_events: EventFlags) -> io::Result<()> {
 
         let info = EpollEvent {
             events: ioevent_to_epoll(ev_events),
@@ -66,7 +66,7 @@ impl Selector {
         epoll_ctl(self.epfd, EpollOp::EpollCtlAdd, fd as RawFd, &info).map_err(super::from_nix_error)
     }
 
-    pub fn deregister(&mut self, fd: u32, ev_events: EventFlags) -> io::Result<()> {
+    pub fn deregister(&mut self, fd: i32, ev_events: EventFlags) -> io::Result<()> {
         let info = EpollEvent {
             events: ioevent_to_epoll(ev_events),
             data: 0,

@@ -44,7 +44,7 @@ pub struct EventLoop {
     selector: Selector,
     config: EventLoopConfig,
     evts: Vec<EventEntry>,
-    event_maps: HashMap<u32, EventEntry>,
+    event_maps: HashMap<i32, EventEntry>,
 }
 
 
@@ -121,22 +121,22 @@ impl EventLoop {
         Ok(())
     }
 
-    pub fn add_timer(&mut self, entry: EventEntry) -> u32 {
+    pub fn add_timer(&mut self, entry: EventEntry) -> i32 {
         self.timer.add_timer(entry)
     }
 
     pub fn add_new_timer(&mut self, tick_step: u64,
                      tick_repeat: bool,
                      call_back: Option<fn(ev: &mut EventLoop,
-                                          fd: u32,
+                                          fd: i32,
                                           flag: EventFlags,
                                           data: Option<&mut Box<Any>>)
                                           -> RetValue>,
-                     data: Option<Box<Any>>) -> u32 {
+                     data: Option<Box<Any>>) -> i32 {
         self.timer.add_timer(EventEntry::new_timer(tick_step, tick_repeat, call_back, data))
     }
 
-    pub fn del_timer(&mut self, time_id: u32) -> Option<EventEntry> {
+    pub fn del_timer(&mut self, time_id: i32) -> Option<EventEntry> {
         self.timer.del_timer(time_id)
     }
 
@@ -145,15 +145,15 @@ impl EventLoop {
         self.event_maps.insert(entry.ev_fd, entry);
     }
 
-    pub fn add_new_event(&mut self, ev_fd: u32,
+    pub fn add_new_event(&mut self, ev_fd: i32,
                         ev_events: EventFlags,
-                        call_back: Option<fn(ev: &mut EventLoop, fd: u32, flag: EventFlags, data: Option<&mut Box<Any>>)
+                        call_back: Option<fn(ev: &mut EventLoop, fd: i32, flag: EventFlags, data: Option<&mut Box<Any>>)
                                                 -> RetValue>,
                         data: Option<Box<Any>>) {
         self.add_event(EventEntry::new(ev_fd, ev_events, call_back, data))
     }
 
-    pub fn del_event(&mut self, ev_fd: u32, ev_events: EventFlags) {
+    pub fn del_event(&mut self, ev_fd: i32, ev_events: EventFlags) {
         let _ = self.selector.deregister(ev_fd, ev_events);
         self.event_maps.remove(&ev_fd);
     }
