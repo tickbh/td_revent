@@ -15,9 +15,12 @@ mod event_loop;
 mod timer;
 mod event_flags;
 mod event_entry;
+mod event_buffer;
 
 pub use timer::Timer;
 pub use event_loop::{EventLoop, EventLoopConfig, RetValue};
+
+pub use event_buffer::{Buffer, EventBuffer};
 
 pub mod sys;
 
