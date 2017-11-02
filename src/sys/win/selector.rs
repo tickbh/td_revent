@@ -11,6 +11,8 @@ pub struct Selector {
     read_sockets: Vec<SOCKET>,
     read_sets: winapi::fd_set,
     write_sets: winapi::fd_set,
+
+    event_maps: HashMap<i32, EventEntry>,
 }
 
 impl Selector {

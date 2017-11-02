@@ -6,6 +6,9 @@ use std::mem;
 use std::os::windows::io::*;
 use std::time::Duration;
 
+use {EventFlags};
+use psocket::TcpSocket;
+
 use super::handle::Handle;
 use winapi::*;
 use super::kernel32::*;
@@ -55,30 +58,29 @@ impl CompletionPort {
     /// Any object which is convertible to a `HANDLE` via the `AsRawHandle`
     /// trait can be provided to this function, such as `std::fs::File` and
     /// friends.
-    pub fn add_handle<T: AsRawHandle + ?Sized>(&self, token: usize,
+    pub fn add_handle<T: AsRawHandle + ?Sized>(&self, flag: EventFlags,
                                                t: &T) -> io::Result<()> {
-        self._add(token, t.as_raw_handle())
+        self._add(flag, t.as_raw_handle())
     }
 
     /// Associates a new `SOCKET` to this I/O completion port.
     ///
     /// This function will associate the given socket to this port with the
-    /// given `token` to be returned in status messages whenever it receives a
+    /// given `flag` to be returned in status messages whenever it receives a
     /// notification.
     ///
     /// Any object which is convertible to a `SOCKET` via the `AsRawSocket`
     /// trait can be provided to this function, such as `std::net::TcpStream`
     /// and friends.
-    pub fn add_socket<T: AsRawSocket + ?Sized>(&self, token: usize,
-                                               t: &T) -> io::Result<()> {
-        self._add(token, t.as_raw_socket() as HANDLE)
+    pub fn add_socket(&self, flag: EventFlags, t: &TcpSocket) -> io::Result<()> {
+        self._add(flag, t.as_raw_socket() as HANDLE)
     }
 
-    fn _add(&self, token: usize, handle: HANDLE) -> io::Result<()> {
-        assert_eq!(mem::size_of_val(&token), mem::size_of::<ULONG_PTR>());
+    fn _add(&self, flag: EventFlags, handle: HANDLE) -> io::Result<()> {
+        assert_eq!(mem::size_of_val(&flag), mem::size_of::<ULONG_PTR>());
         let ret = unsafe {
             CreateIoCompletionPort(handle, self.handle.raw(),
-                                   token as ULONG_PTR, 0)
+                                   flag.bits() as ULONG_PTR, 0)
         };
         if ret.is_null() {
             Err(io::Error::last_os_error())
@@ -196,12 +198,12 @@ impl CompletionStatus {
     /// This function is useful when creating a status to send to a port with
     /// the `post` method. The parameters are opaquely passed through and not
     /// interpreted by the system at all.
-    pub fn new(bytes: u32, token: usize, overlapped: *mut Overlapped)
+    pub fn new(bytes: u32, flag: EventFlags, overlapped: *mut Overlapped)
                -> CompletionStatus {
-        assert_eq!(mem::size_of_val(&token), mem::size_of::<ULONG_PTR>());
+        assert_eq!(mem::size_of_val(&flag), mem::size_of::<ULONG_PTR>());
         CompletionStatus(OVERLAPPED_ENTRY {
             dwNumberOfBytesTransferred: bytes,
-            lpCompletionKey: token as ULONG_PTR,
+            lpCompletionKey: flag.bits() as ULONG_PTR,
             lpOverlapped: overlapped as *mut _,
             Internal: 0,
         })
@@ -221,7 +223,7 @@ impl CompletionStatus {
     /// This function is useful when creating a stack buffer or vector of
     /// completion statuses to be passed to the `get_many` function.
     pub fn zero() -> CompletionStatus {
-        CompletionStatus::new(0, 0, 0 as *mut _)
+        CompletionStatus::new(0, EventFlags::empty(), 0 as *mut _)
     }
 
     /// Returns the number of bytes that were transferred for the I/O operation
@@ -235,8 +237,8 @@ impl CompletionStatus {
     ///
     /// A completion key is a per-handle key that is specified when it is added
     /// to an I/O completion port via `add_handle` or `add_socket`.
-    pub fn token(&self) -> usize {
-        self.0.lpCompletionKey as usize
+    pub fn flag(&self) -> EventFlags {
+        EventFlags::from_bits_truncate(self.0.lpCompletionKey as u32)
     }
 
     /// Returns a pointer to the `Overlapped` structure that was specified when
@@ -267,8 +269,8 @@ mod tests {
     }
 
     #[test]
-    fn token_right_size() {
-        assert_eq!(mem::size_of::<usize>(), mem::size_of::<ULONG_PTR>());
+    fn flag_right_size() {
+        assert_eq!(mem::size_of::<EventFlags>(), mem::size_of::<ULONG_PTR>());
     }
 
     #[test]
@@ -284,7 +286,7 @@ mod tests {
         c.post(CompletionStatus::new(1, 2, 3 as *mut _)).unwrap();
         let s = c.get(None).unwrap();
         assert_eq!(s.bytes_transferred(), 1);
-        assert_eq!(s.token(), 2);
+        assert_eq!(s.flag(), 2);
         assert_eq!(s.overlapped(), 3 as *mut _);
     }
 

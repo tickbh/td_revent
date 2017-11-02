@@ -5,10 +5,15 @@ extern crate winapi;
 extern crate ws2_32;
 #[cfg(test)] extern crate rand;
 
-pub mod selector;
+// pub mod selector;
 
-pub use self::selector::Selector;
+// pub use self::selector::Selector;
 
+pub mod selector_iocp;
+pub use self::selector_iocp::Selector;
+pub use self::from_raw_arc::FromRawArc;
+
+use std::mem;
 use std::cmp;
 use std::io;
 use std::time::Duration;
@@ -28,8 +33,10 @@ mod overlapped;
 pub mod iocp;
 pub mod net;
 pub mod pipe;
+pub mod from_raw_arc;
 
 pub use self::overlapped::Overlapped;
+pub use self::net::{TcpSocketExt, AcceptAddrsBuf};
 
 fn cvt(i: BOOL) -> io::Result<BOOL> {
     if i == 0 {
@@ -51,4 +58,18 @@ fn dur2ms(dur: Option<Duration>) -> u32 {
     }).map(|ms| {
         cmp::min(u32::max_value() as u64, ms) as u32
     }).unwrap_or(INFINITE - 1)
+}
+
+macro_rules! overlapped2arc {
+    ($e:expr, $t:ty, $($field:ident).+) => ({
+        let offset = offset_of!($t, $($field).+);
+        debug_assert!(offset < mem::size_of::<$t>());
+        FromRawArc::from_raw(($e as usize - offset) as *mut $t)
+    })
+}
+
+macro_rules! offset_of {
+    ($t:ty, $($field:ident).+) => (
+        &(*(0 as *const $t)).$($field).+ as *const _ as usize
+    )
 }

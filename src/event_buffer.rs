@@ -2,7 +2,7 @@ use std::io::{Read, Write, Result};
 use std::ptr;
 use std::fmt;
 use std::cmp;
-use psocket::TcpSocket;
+use psocket::{self, TcpSocket};
 
 pub struct Buffer {
     val: Vec<u8>,
@@ -110,13 +110,16 @@ impl Write for Buffer {
 }
 
 pub struct EventBuffer {
-    read: Buffer,
-    write: Buffer,
-    socket: TcpSocket,
-    read_cache: Vec<u8>,
-    write_cache: Vec<u8>,
-    is_in_read: bool,
-    is_in_write: bool,
+    pub read: Buffer,
+    pub write: Buffer,
+    pub socket: TcpSocket,
+    pub read_cache: Vec<u8>,
+    pub write_cache: Vec<u8>,
+    pub is_in_read: bool,
+    pub is_in_write: bool,
+
+    // pub accept_buf: AcceptAddrsBuf,
+    // pub accept_socket: TcpSocket,
 }
 
 impl EventBuffer {
@@ -129,6 +132,12 @@ impl EventBuffer {
             write_cache: Vec::with_capacity(capacity),
             is_in_read: false,
             is_in_write: false,
+            // accept_buf: AcceptAddrsBuf::new(),
+            // accept_socket: TcpSocket::new_invalid(),
         }
+    }
+
+    pub fn as_raw_socket(&self) -> psocket::SOCKET {
+        self.socket.as_raw_socket()
     }
 }

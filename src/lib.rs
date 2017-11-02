@@ -24,7 +24,7 @@ pub use event_buffer::{Buffer, EventBuffer};
 
 pub mod sys;
 
-pub use event_flags::{EventFlags, FLAG_TIMEOUT, FLAG_READ, FLAG_WRITE, FLAG_PERSIST, FLAG_ERROR};
+pub use event_flags::{EventFlags, FLAG_TIMEOUT, FLAG_READ, FLAG_WRITE, FLAG_PERSIST, FLAG_ERROR, FLAG_ACCEPT};
 pub use event_entry::EventEntry;
 pub use sys::{AsFd, FromFd};
 
