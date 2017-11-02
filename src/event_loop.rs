@@ -2,7 +2,7 @@
 use {Timer, EventEntry};
 use sys::Selector;
 use std::collections::HashMap;
-use {EventFlags, FLAG_PERSIST};
+use {EventFlags, FLAG_PERSIST, EventBuffer};
 use std::io;
 use std::any::Any;
 
@@ -149,6 +149,13 @@ impl EventLoop {
     pub fn add_event(&mut self, entry: EventEntry) {
         let _ = self.selector.register(entry.ev_fd, entry.ev_events);
         self.event_maps.insert(entry.ev_fd, entry);
+    }
+
+    /// 添加定时器
+    pub fn add_register_socket(&mut self, buffer: EventBuffer, entry: EventEntry) {
+        unsafe {
+            let _ = self.selector.register_socket(buffer, entry);
+        }
     }
 
     /// 添加定时器, ev_fd为socket的句柄id, ev_events为监听读, 写, 持久的信息

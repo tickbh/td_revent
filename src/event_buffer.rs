@@ -27,6 +27,10 @@ impl Buffer {
         self.val.len()
     }
 
+    pub fn empty(&self) -> bool {
+        self.val.len() == 0
+    }
+
     pub fn set_rpos(&mut self, rpos: usize) {
         self.rpos = rpos;
     }

@@ -60,16 +60,3 @@ fn dur2ms(dur: Option<Duration>) -> u32 {
     }).unwrap_or(INFINITE - 1)
 }
 
-macro_rules! overlapped2arc {
-    ($e:expr, $t:ty, $($field:ident).+) => ({
-        let offset = offset_of!($t, $($field).+);
-        debug_assert!(offset < mem::size_of::<$t>());
-        FromRawArc::from_raw(($e as usize - offset) as *mut $t)
-    })
-}
-
-macro_rules! offset_of {
-    ($t:ty, $($field:ident).+) => (
-        &(*(0 as *const $t)).$($field).+ as *const _ as usize
-    )
-}

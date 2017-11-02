@@ -238,7 +238,7 @@ impl CompletionStatus {
     /// A completion key is a per-handle key that is specified when it is added
     /// to an I/O completion port via `add_handle` or `add_socket`.
     pub fn flag(&self) -> EventFlags {
-        EventFlags::from_bits_truncate(self.0.lpCompletionKey as u32)
+        EventFlags::from_bits_truncate(self.0.lpCompletionKey as u64)
     }
 
     /// Returns a pointer to the `Overlapped` structure that was specified when
