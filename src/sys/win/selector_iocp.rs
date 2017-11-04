@@ -1,10 +1,10 @@
-use {EventEntry, EventFlags, FLAG_READ, FLAG_WRITE, FLAG_ACCEPT, EventBuffer};
+use {EventEntry, EventFlags, FLAG_READ, FLAG_WRITE, FLAG_ACCEPT, EventBuffer, EventLoop};
 use std::collections::HashMap;
 use std::mem;
 use psocket::SOCKET;
 use std::cell::UnsafeCell;
 use std::ptr;
-use std::io;
+use std::io::{self, ErrorKind};
 use std::time::Duration;
 use sys::win::iocp::{CompletionPort, CompletionStatus};
 use sys::win::{FromRawArc, Overlapped};
@@ -50,6 +50,16 @@ pub struct Event {
     pub accept_socket: TcpSocket,
 }
 
+impl Event {
+    pub fn is_accept(&self) -> bool {
+        self.entry.ev_events.contains(FLAG_ACCEPT)
+    }
+
+    pub fn get_event_socket(&self) -> SOCKET {
+        self.buffer.socket.as_raw_socket()
+    }
+}
+
 #[derive(Clone)]
 pub struct EventImpl {
     pub inner: FromRawArc<Event>,
@@ -74,7 +84,7 @@ pub struct Events {
 #[repr(C)]
 pub struct CbOverlapped {
     inner: UnsafeCell<Overlapped>,
-    callback: fn(&OVERLAPPED_ENTRY),
+    callback: fn(&mut EventLoop, &OVERLAPPED_ENTRY),
 }
 
 
@@ -86,7 +96,7 @@ impl CbOverlapped {
     /// I/O operations that are registered with mio's event loop. When the I/O
     /// operation associated with an `OVERLAPPED` pointer completes the event
     /// loop will invoke the function pointer provided by `cb`.
-    pub fn new(cb: fn(&OVERLAPPED_ENTRY)) -> CbOverlapped {
+    pub fn new(cb: fn(&mut EventLoop, &OVERLAPPED_ENTRY)) -> CbOverlapped {
         CbOverlapped {
             inner: UnsafeCell::new(Overlapped::zero()),
             callback: cb,
@@ -137,7 +147,7 @@ impl Events {
     // }
 }
 
-fn accept_done(status: &OVERLAPPED_ENTRY) {
+fn accept_done(event: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
     println!("1111111111111111");
     let status = CompletionStatus::from_entry(status);
     let mut event = overlapped2arc!(status.overlapped(), Event, read);
@@ -160,12 +170,29 @@ fn accept_done(status: &OVERLAPPED_ENTRY) {
 }
 
 
-fn read_done(status: &OVERLAPPED_ENTRY) {
+fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
     println!("1111111111111111");
     let status = CompletionStatus::from_entry(status);
     let mut event = overlapped2arc!(status.overlapped(), Event, read);
-    let socket = mem::replace(&mut event.accept_socket, TcpSocket::new_invalid().unwrap());
-    println!("socket new is = {:?}", socket);
+    if event.is_accept() {
+        let mut socket = mem::replace(&mut event.accept_socket, TcpSocket::new_invalid().unwrap());
+        let result = event.buffer.socket.accept_complete(&socket).and_then(|()| {
+            event.accept_buf.parse(&event.buffer.socket)
+        }).and_then(|buf| {
+            buf.remote().ok_or_else(|| {
+                io::Error::new(ErrorKind::Other, "could not obtain remote address")
+            })
+        });
+        match result {
+            Ok(remote_addr) => socket.set_peer_addr(remote_addr),
+            Err(e) => {
+                
+            },
+        };
+
+        println!("socket new is = {:?}", socket);
+        event_loop.selector.post_accept_event(event.get_event_socket());
+    }
     // let status = CompletionStatus::from_entry(status);
     // let me2 = StreamImp {
     //     inner: unsafe { overlapped2arc!(status.overlapped(), StreamIo, read) },
@@ -202,7 +229,7 @@ fn read_done(status: &OVERLAPPED_ENTRY) {
     // }
 }
 
-fn write_done(status: &OVERLAPPED_ENTRY) {
+fn write_done(event: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
     // let status = CompletionStatus::from_entry(status);
     // trace!("finished a write {}", status.bytes_transferred());
     // let me2 = StreamImp {
@@ -249,6 +276,42 @@ impl Selector {
         })
     }
 
+    
+    pub fn do_select1(&mut self, event: &mut EventLoop, timeout: u32) -> io::Result<u32> {
+        Ok(1)
+    }
+
+    pub fn do_select(event: &mut EventLoop, timeout: u32) -> io::Result<u32> {
+        let n = match event.selector.port.get_many(&mut event.selector.events.statuses, Some(Duration::from_millis(timeout as u64))) {
+            Ok(statuses) => statuses.len(),
+            Err(ref e) if e.raw_os_error() == Some(WAIT_TIMEOUT as i32) => 0,
+            Err(e) => return Err(e),
+        };
+
+        let statuses = event.selector.events.statuses[..n].to_vec();
+        let mut ret = false;
+        for status in statuses {
+            println!("aaaaaaaaaaaa11111");
+            // This should only ever happen from the awakener, and we should
+            // only ever have one awakener right now, so assert as such.
+            if status.overlapped() as usize == 0 {
+                // assert_eq!(status.token(), usize::from(awakener));
+                ret = true;
+                continue;
+            }
+
+            let callback = unsafe {
+                (*(status.overlapped() as *mut CbOverlapped)).callback
+            };
+
+            println!("select; -> got overlapped");
+            callback(event, status.entry());
+        }
+
+        // println!("returning");
+        Ok(0)
+    }
+
     pub fn select(&mut self, evts: &mut Vec<EventEntry>, timeout: u32) -> io::Result<u32> {
         let n = match self.port.get_many(&mut self.events.statuses, Some(Duration::from_millis(timeout as u64))) {
             Ok(statuses) => statuses.len(),
@@ -272,7 +335,7 @@ impl Selector {
             };
 
             println!("select; -> got overlapped");
-            callback(status.entry());
+            // callback(event, status.entry());
         }
 
         // println!("returning");

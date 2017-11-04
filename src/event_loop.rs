@@ -41,7 +41,7 @@ impl Default for EventLoopConfig {
 pub struct EventLoop {
     run: bool,
     timer: Timer,
-    selector: Selector,
+    pub selector: Selector,
     config: EventLoopConfig,
     evts: Vec<EventEntry>,
     event_maps: HashMap<i32, EventEntry>,
@@ -97,6 +97,9 @@ impl EventLoop {
     /// handler if any of the registered handles become ready during that
     /// time.
     pub fn run_once(&mut self) -> io::Result<()> {
+        // self.selector.do_select1(self, 0);
+        let size = try!(Selector::do_select(self, 0)) as usize;
+
         let size = try!(self.selector.select(&mut self.evts, 0)) as usize;
         let evts : Vec<EventEntry> = self.evts.drain(..).collect();
         for evt in evts {

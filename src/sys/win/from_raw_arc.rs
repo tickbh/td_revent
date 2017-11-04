@@ -49,7 +49,15 @@ impl<T> FromRawArc<T> {
         // Note that if we could use `mem::transmute` here to get a libstd Arc
         // (guaranteed) then we could just use std::sync::Arc, but this is the
         // crucial reason this currently exists.
-        FromRawArc { _inner: ptr as *mut Inner<T> }
+        let arc = FromRawArc { _inner: ptr as *mut Inner<T> };
+        arc.fetch_add();
+        arc
+    }
+
+    fn fetch_add(&self) {
+        unsafe {
+            (*self._inner).cnt.fetch_add(1, Ordering::Relaxed);
+        }
     }
 }
 
@@ -58,9 +66,7 @@ impl<T> Clone for FromRawArc<T> {
         // Atomic ordering of Relaxed lifted from libstd, but the general idea
         // is that you need synchronization to communicate this increment to
         // another thread, so this itself doesn't need to be synchronized.
-        unsafe {
-            (*self._inner).cnt.fetch_add(1, Ordering::Relaxed);
-        }
+        self.fetch_add();
         FromRawArc { _inner: self._inner }
     }
 }

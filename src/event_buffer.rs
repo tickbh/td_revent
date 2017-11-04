@@ -121,9 +121,6 @@ pub struct EventBuffer {
     pub write_cache: Vec<u8>,
     pub is_in_read: bool,
     pub is_in_write: bool,
-
-    // pub accept_buf: AcceptAddrsBuf,
-    // pub accept_socket: TcpSocket,
 }
 
 impl EventBuffer {
