@@ -442,7 +442,7 @@ impl Selector {
         Ok(())
     }
 
-    pub fn register(&mut self, fd: i32, ev_events: EventFlags) {
+    pub fn register(&mut self, fd: SOCKET, ev_events: EventFlags) {
         // let fd = fd as SOCKET;
         // if ev_events.contains(FLAG_READ) && !self.read_sockets.contains(&fd) {
         //     self.read_sockets.push(fd);
@@ -452,7 +452,7 @@ impl Selector {
         // }
     }
 
-    pub fn deregister(&mut self, fd: i32, flag: EventFlags) {
+    pub fn deregister(&mut self, fd: SOCKET, flag: EventFlags) {
         // let fd = fd as SOCKET;
         // fn search_index(vec: &Vec<SOCKET>, value: &SOCKET) -> Option<usize> {
         //     for (i, v) in vec.iter().enumerate() {

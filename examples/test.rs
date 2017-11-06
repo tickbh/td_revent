@@ -4,12 +4,13 @@ extern crate psocket;
 
 use td_revent::*;
 use std::io::prelude::*;
+use std::io::Result;
 use std::any::Any;
 use self::psocket::TcpSocket;
 
 static mut S_COUNT : i32 = 0; 
 
-fn client_read_callback(_ev : &mut EventLoop, _fd : i32, _ : EventFlags, data : Option<&mut Box<Any>>) -> RetValue {
+fn client_read_callback(_ev : &mut EventLoop, buffer: &mut EventBuffer, data : Option<&mut Box<Any>>) -> RetValue {
     let client = any_to_mut!(data, TcpSocket);
     // let client = data.unwrap().downcast_mut::<TcpSocket>().unwrap();
     println!("{:?}", client);
@@ -41,7 +42,7 @@ fn client_read_callback(_ev : &mut EventLoop, _fd : i32, _ : EventFlags, data : 
     RetValue::OK
 }
 
-fn server_read_callback(ev : &mut EventLoop, _fd : i32, _ : EventFlags, data : Option<&mut Box<Any>>) -> RetValue {
+fn server_read_callback(ev : &mut EventLoop, buffer: &mut EventBuffer, data : Option<&mut Box<Any>>) -> RetValue {
     let socket = any_to_mut!(data, TcpSocket);
 
     println!("{:?}", socket);
@@ -66,14 +67,14 @@ fn server_read_callback(ev : &mut EventLoop, _fd : i32, _ : EventFlags, data : O
     RetValue::OK
 }
 
-fn accept_callback(ev : &mut EventLoop, _fd : i32, _ : EventFlags, data : Option<&mut Box<Any>>) -> RetValue {
+fn accept_callback(ev : &mut EventLoop, tcp: Result<TcpSocket>, data : Option<&mut Box<Any>>) -> RetValue {
     let listener = any_to_mut!(data, TcpSocket);
 
     let (mut new_socket, new_attr) = listener.accept().unwrap();
     let _ = new_socket.set_nonblocking(true);
 
     println!("{:?} attr is {:?}", new_socket, new_attr);
-    ev.add_new_event(new_socket.as_raw_socket() as i32, FLAG_READ | FLAG_PERSIST, Some(server_read_callback), Some(Box::new(new_socket)));
+    ev.add_new_event(new_socket.as_raw_socket(), FLAG_READ | FLAG_PERSIST, Some(server_read_callback), Some(Box::new(new_socket)));
     RetValue::OK
 }
 
@@ -93,10 +94,10 @@ fn main() {
     // let mut sock_mgr = SocketManger { listener : listener, client : client };
     // event_loop.add_new_event(listener.as_raw_socket() as i32, FLAG_READ | FLAG_PERSIST, Some(accept_callback), Some(Box::new(listener)));
 
-    let socket = listener.as_raw_socket() as i32;
-    event_loop.add_register_socket(EventBuffer::new(listener, 100), EventEntry::new(socket, FLAG_READ | FLAG_PERSIST | FLAG_ACCEPT, Some(accept_callback), None));
+    let socket = listener.as_raw_socket();
+    event_loop.add_register_socket(EventBuffer::new(listener, 100), EventEntry::new_accept(socket, FLAG_READ | FLAG_PERSIST | FLAG_ACCEPT, Some(accept_callback), None));
     
-    event_loop.add_new_event(client.as_raw_socket() as i32, FLAG_READ | FLAG_PERSIST, Some(client_read_callback), Some(Box::new(client)));
+    event_loop.add_new_event(client.as_raw_socket(), FLAG_READ | FLAG_PERSIST, Some(client_read_callback), Some(Box::new(client)));
 
     // mem::forget(listener);
     // mem::forget(client);

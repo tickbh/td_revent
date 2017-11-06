@@ -9,12 +9,13 @@ extern crate time;
 
 pub struct Timer {
     timer_queue: RBTree<TreeKey, EventEntry>,
-    time_maps: HashMap<i32, u64>,
-    time_id: i32,
+    time_maps: HashMap<u32, u64>,
+    time_id: u32,
+    time_max_id: u32,
 }
 
 #[derive(PartialEq, Eq)]
-struct TreeKey(u64, i32);
+struct TreeKey(u64, u32);
 
 impl Ord for TreeKey {
     fn cmp(&self, other: &Self) -> Ordering {
@@ -33,11 +34,12 @@ impl PartialOrd for TreeKey {
 
 
 impl Timer {
-    pub fn new() -> Timer {
+    pub fn new(time_max_id: u32) -> Timer {
         Timer {
             timer_queue: RBTree::new(),
             time_maps: HashMap::new(),
             time_id: 0,
+            time_max_id: time_max_id,
         }
     }
 
@@ -46,21 +48,21 @@ impl Timer {
     }
 
     // ID = 0 为无效ID
-    pub fn add_timer(&mut self, mut entry: EventEntry) -> i32 {
+    pub fn add_timer(&mut self, mut entry: EventEntry) -> u32 {
         if entry.tick_step == 0 {
             return 0;
         }
-        if entry.ev_fd == 0 {
-            entry.ev_fd = self.calc_new_id();
+        if entry.time_id == 0 {
+            entry.time_id = self.calc_new_id();
         };
-        let time_id = entry.ev_fd;
+        let time_id = entry.time_id;
         entry.tick_ms = self.now() + entry.tick_step;
         self.time_maps.insert(time_id, entry.tick_ms);
         self.timer_queue.insert(TreeKey(entry.tick_ms, time_id), entry);
         time_id
     }
 
-    pub fn del_timer(&mut self, time_id: i32) -> Option<EventEntry> {
+    pub fn del_timer(&mut self, time_id: u32) -> Option<EventEntry> {
         if !self.time_maps.contains_key(&time_id) {
             return None;
         }
@@ -88,7 +90,7 @@ impl Timer {
         }
     }
 
-    fn calc_new_id(&mut self) -> i32 {
+    fn calc_new_id(&mut self) -> u32 {
         loop {
             self.time_id = self.time_id.overflowing_add(1).0;
             self.time_id = cmp::max(self.time_id, 1);

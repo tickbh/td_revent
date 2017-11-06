@@ -2,9 +2,10 @@
 use {Timer, EventEntry};
 use sys::Selector;
 use std::collections::HashMap;
-use {EventFlags, FLAG_PERSIST, EventBuffer};
+use {EventFlags, FLAG_PERSIST, EventBuffer, TIMER_CB, ACCEPT_CB, EVENT_CB};
 use std::io;
 use std::any::Any;
+use psocket::SOCKET;
 
 pub enum RetValue {
     OK,
@@ -23,6 +24,7 @@ pub struct EventLoopConfig {
 
     // == Timer ==
     pub timer_capacity: usize,
+    pub time_max_id: u32,
 }
 
 impl Default for EventLoopConfig {
@@ -32,6 +34,7 @@ impl Default for EventLoopConfig {
             notify_capacity: 4_096,
             messages_per_tick: 256,
             timer_capacity: 65_536,
+            time_max_id: u32::max_value() / 2,
         }
     }
 }
@@ -44,7 +47,7 @@ pub struct EventLoop {
     pub selector: Selector,
     config: EventLoopConfig,
     evts: Vec<EventEntry>,
-    event_maps: HashMap<i32, EventEntry>,
+    // event_maps: HashMap<i32, EventEntry>,
 }
 
 
@@ -54,14 +57,14 @@ impl EventLoop {
     }
 
     pub fn configured(config: EventLoopConfig) -> io::Result<EventLoop> {
-        let timer = Timer::new();
+        let timer = Timer::new(config.time_max_id);
         let selector = try!(Selector::new());
         Ok(EventLoop {
             run: true,
             timer: timer,
             selector: selector,
             config: config,
-            event_maps: HashMap::new(),
+            // event_maps: HashMap::new(),
             evts: vec![],
         })
     }
@@ -102,19 +105,19 @@ impl EventLoop {
 
         let size = try!(self.selector.select(&mut self.evts, 0)) as usize;
         let evts : Vec<EventEntry> = self.evts.drain(..).collect();
-        for evt in evts {
-            if let Some(mut ev) = self.event_maps.remove(&evt.ev_fd) {
-                let is_over = match ev.callback(self, evt.ev_events) {
-                    RetValue::OVER => true,
-                    _ => !ev.ev_events.contains(FLAG_PERSIST),
-                };
-                if is_over {
-                    self.del_event(ev.ev_fd, ev.ev_events);
-                } else {
-                    self.event_maps.insert(ev.ev_fd, ev);
-                }
-            }
-        }
+        // for evt in evts {
+        //     if let Some(mut ev) = self.event_maps.remove(&evt.ev_fd) {
+        //         let is_over = match ev.callback(self, evt.ev_events) {
+        //             RetValue::OVER => true,
+        //             _ => !ev.ev_events.contains(FLAG_PERSIST),
+        //         };
+        //         if is_over {
+        //             self.del_event(ev.ev_fd, ev.ev_events);
+        //         } else {
+        //             self.event_maps.insert(ev.ev_fd, ev);
+        //         }
+        //     }
+        // }
 
         let is_op = self.timer_process();
         // nothing todo in this loop, we will sleep 1millis
@@ -125,7 +128,7 @@ impl EventLoop {
     }
 
     /// 添加定时器, 如果time_step为0,则添加定时器失败
-    pub fn add_timer(&mut self, entry: EventEntry) -> i32 {
+    pub fn add_timer(&mut self, entry: EventEntry) -> u32 {
         self.timer.add_timer(entry)
     }
 
@@ -134,24 +137,20 @@ impl EventLoop {
     /// 添加定时器, 如果time_step为0,则添加定时器失败
     pub fn add_new_timer(&mut self, tick_step: u64,
                      tick_repeat: bool,
-                     call_back: Option<fn(ev: &mut EventLoop,
-                                          fd: i32,
-                                          flag: EventFlags,
-                                          data: Option<&mut Box<Any>>)
-                                          -> RetValue>,
-                     data: Option<Box<Any>>) -> i32 {
-        self.timer.add_timer(EventEntry::new_timer(tick_step, tick_repeat, call_back, data))
+                     timer_cb: Option<TIMER_CB>,
+                     data: Option<Box<Any>>) -> u32 {
+        self.timer.add_timer(EventEntry::new_timer(tick_step, tick_repeat, timer_cb, data))
     }
 
     /// 删除指定的定时器id, 定时器内部实现细节为红黑树, 删除定时器的时间为O(logn), 如果存在该定时器, 则返回相关的定时器信息
-    pub fn del_timer(&mut self, time_id: i32) -> Option<EventEntry> {
+    pub fn del_timer(&mut self, time_id: u32) -> Option<EventEntry> {
         self.timer.del_timer(time_id)
     }
 
     /// 添加定时器
     pub fn add_event(&mut self, entry: EventEntry) {
         let _ = self.selector.register(entry.ev_fd, entry.ev_events);
-        self.event_maps.insert(entry.ev_fd, entry);
+        // self.event_maps.insert(entry.ev_fd, entry);
     }
 
     /// 添加定时器
@@ -162,18 +161,26 @@ impl EventLoop {
     }
 
     /// 添加定时器, ev_fd为socket的句柄id, ev_events为监听读, 写, 持久的信息
-    pub fn add_new_event(&mut self, ev_fd: i32,
+    pub fn add_new_event(&mut self, ev_fd: SOCKET,
                         ev_events: EventFlags,
-                        call_back: Option<fn(ev: &mut EventLoop, fd: i32, flag: EventFlags, data: Option<&mut Box<Any>>)
-                                                -> RetValue>,
+                        event: Option<EVENT_CB>,
                         data: Option<Box<Any>>) {
-        self.add_event(EventEntry::new(ev_fd, ev_events, call_back, data))
+        self.add_event(EventEntry::new_event(ev_fd, ev_events, event, data))
+    }
+
+    /// 添加定时器, ev_fd为socket的句柄id, ev_events为监听读, 写, 持久的信息
+    pub fn add_new_accept(&mut self, ev_fd: SOCKET,
+                        ev_events: EventFlags,
+                        accept: Option<ACCEPT_CB>,
+                        data: Option<Box<Any>>) {
+        self.add_event(EventEntry::new_accept(ev_fd, ev_events, accept, data))
     }
 
     /// 删除指定socket的句柄信息
-    pub fn del_event(&mut self, ev_fd: i32, ev_events: EventFlags) -> Option<EventEntry> {
+    pub fn del_event(&mut self, ev_fd: SOCKET, ev_events: EventFlags) -> Option<EventEntry> {
         let _ = self.selector.deregister(ev_fd, ev_events);
-        self.event_maps.remove(&ev_fd)
+        None
+        // self.event_maps.remove(&ev_fd)
     }
     
     /// 定时器的处理处理
@@ -186,7 +193,8 @@ impl EventLoop {
             match self.timer.tick_time(now) {
                 Some(mut entry) => {
                     is_op = true;
-                    let is_over = match entry.callback(self, EventFlags::empty()) {
+                    let time_id = entry.time_id;
+                    let is_over = match entry.timer_cb(self, time_id) {
                         RetValue::OVER => true,
                         _ => !entry.ev_events.contains(FLAG_PERSIST),
                     };
