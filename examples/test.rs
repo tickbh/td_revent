@@ -68,13 +68,12 @@ fn server_read_callback(ev : &mut EventLoop, buffer: &mut EventBuffer, data : Op
 }
 
 fn accept_callback(ev : &mut EventLoop, tcp: Result<TcpSocket>, data : Option<&mut Box<Any>>) -> RetValue {
-    let listener = any_to_mut!(data, TcpSocket);
+    let new_socket = tcp.unwrap();
 
-    let (mut new_socket, new_attr) = listener.accept().unwrap();
-    let _ = new_socket.set_nonblocking(true);
+    println!("{:?} attr is {:?}", new_socket, new_socket.peer_addr());
 
-    println!("{:?} attr is {:?}", new_socket, new_attr);
-    ev.add_new_event(new_socket.as_raw_socket(), FLAG_READ | FLAG_PERSIST, Some(server_read_callback), Some(Box::new(new_socket)));
+    let socket = new_socket.as_raw_socket();
+    ev.add_register_socket(EventBuffer::new(new_socket, 100), EventEntry::new_event(socket, FLAG_READ | FLAG_PERSIST, Some(server_read_callback), None, None));
     RetValue::OK
 }
 
@@ -95,9 +94,9 @@ fn main() {
     // event_loop.add_new_event(listener.as_raw_socket() as i32, FLAG_READ | FLAG_PERSIST, Some(accept_callback), Some(Box::new(listener)));
 
     let socket = listener.as_raw_socket();
-    event_loop.add_register_socket(EventBuffer::new(listener, 100), EventEntry::new_accept(socket, FLAG_READ | FLAG_PERSIST | FLAG_ACCEPT, Some(accept_callback), None));
+    event_loop.add_register_socket(EventBuffer::new(listener, 100), EventEntry::new_accept(socket, FLAG_READ | FLAG_PERSIST | FLAG_ACCEPT, Some(accept_callback), None, None));
     
-    event_loop.add_new_event(client.as_raw_socket(), FLAG_READ | FLAG_PERSIST, Some(client_read_callback), Some(Box::new(client)));
+    event_loop.add_new_event(client.as_raw_socket(), FLAG_READ | FLAG_PERSIST, Some(client_read_callback), None, Some(Box::new(client)));
 
     // mem::forget(listener);
     // mem::forget(client);

@@ -2,7 +2,7 @@
 use {Timer, EventEntry};
 use sys::Selector;
 use std::collections::HashMap;
-use {EventFlags, FLAG_PERSIST, EventBuffer, TIMER_CB, ACCEPT_CB, EVENT_CB};
+use {EventFlags, FLAG_PERSIST, EventBuffer, TIMER_CB, ACCEPT_CB, EVENT_CB, ERROR_CB};
 use std::io;
 use std::any::Any;
 use psocket::SOCKET;
@@ -164,16 +164,18 @@ impl EventLoop {
     pub fn add_new_event(&mut self, ev_fd: SOCKET,
                         ev_events: EventFlags,
                         event: Option<EVENT_CB>,
+                        error: Option<ERROR_CB>,
                         data: Option<Box<Any>>) {
-        self.add_event(EventEntry::new_event(ev_fd, ev_events, event, data))
+        self.add_event(EventEntry::new_event(ev_fd, ev_events, event, error, data))
     }
 
     /// 添加定时器, ev_fd为socket的句柄id, ev_events为监听读, 写, 持久的信息
     pub fn add_new_accept(&mut self, ev_fd: SOCKET,
                         ev_events: EventFlags,
                         accept: Option<ACCEPT_CB>,
+                        error: Option<ERROR_CB>,
                         data: Option<Box<Any>>) {
-        self.add_event(EventEntry::new_accept(ev_fd, ev_events, accept, data))
+        self.add_event(EventEntry::new_accept(ev_fd, ev_events, accept, error, data))
     }
 
     /// 删除指定socket的句柄信息

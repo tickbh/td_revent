@@ -1,4 +1,4 @@
-use {EventEntry, EventFlags, FLAG_READ, FLAG_WRITE, FLAG_ACCEPT, EventBuffer, EventLoop};
+use {EventEntry, EventFlags, FLAG_READ, FLAG_WRITE, FLAG_ACCEPT, EventBuffer, EventLoop, RetValue};
 use std::collections::HashMap;
 use std::mem;
 use psocket::SOCKET;
@@ -84,7 +84,7 @@ pub struct Events {
 #[repr(C)]
 pub struct CbOverlapped {
     inner: UnsafeCell<Overlapped>,
-    callback: fn(&mut EventLoop, &OVERLAPPED_ENTRY),
+    callback: fn(&mut EventLoop, &OVERLAPPED_ENTRY) -> RetValue,
 }
 
 
@@ -96,7 +96,7 @@ impl CbOverlapped {
     /// I/O operations that are registered with mio's event loop. When the I/O
     /// operation associated with an `OVERLAPPED` pointer completes the event
     /// loop will invoke the function pointer provided by `cb`.
-    pub fn new(cb: fn(&mut EventLoop, &OVERLAPPED_ENTRY)) -> CbOverlapped {
+    pub fn new(cb: fn(&mut EventLoop, &OVERLAPPED_ENTRY) -> RetValue) -> CbOverlapped {
         CbOverlapped {
             inner: UnsafeCell::new(Overlapped::zero()),
             callback: cb,
@@ -147,7 +147,7 @@ impl Events {
     // }
 }
 
-fn accept_done(event: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
+fn accept_done(event: &mut EventLoop, status: &OVERLAPPED_ENTRY) -> RetValue {
     println!("1111111111111111");
     let status = CompletionStatus::from_entry(status);
     let mut event = overlapped2arc!(status.overlapped(), Event, read);
@@ -167,10 +167,11 @@ fn accept_done(event: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
     //     Err(e) => State::Error(e),
     // };
     // me2.add_readiness(&mut me, Ready::readable());
+    RetValue::OK
 }
 
 
-fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
+fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) -> RetValue {
     println!("1111111111111111");
     let status = CompletionStatus::from_entry(status);
     let mut event = overlapped2arc!(status.overlapped(), Event, read);
@@ -183,15 +184,30 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
                 io::Error::new(ErrorKind::Other, "could not obtain remote address")
             })
         });
-        match result {
-            Ok(remote_addr) => socket.set_peer_addr(remote_addr),
+        let ret = match result {
+            Ok(remote_addr) => { 
+                socket.set_peer_addr(remote_addr);
+                println!("socket new is = {:?}", socket);
+                event.entry.accept_cb(event_loop, Ok(socket))
+            }
             Err(e) => {
-                
+                event.entry.accept_cb(event_loop, Err(e))
             },
         };
 
-        println!("socket new is = {:?}", socket);
-        event_loop.selector.post_accept_event(event.get_event_socket());
+        match ret {
+            RetValue::OVER => {
+                event_loop.del_event(event.get_event_socket(), EventFlags::all());
+            }
+            _ => {
+                if let Err(_) = event_loop.selector.post_accept_event(event.get_event_socket()) {
+                    event_loop.del_event(event.get_event_socket(), EventFlags::all());
+                }
+            },
+        }
+        return RetValue::OK;
+    } else {
+        
     }
     // let status = CompletionStatus::from_entry(status);
     // let me2 = StreamImp {
@@ -227,9 +243,10 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
     //         me.read = State::Error(e);
     //     }
     // }
+    RetValue::OK
 }
 
-fn write_done(event: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
+fn write_done(event: &mut EventLoop, status: &OVERLAPPED_ENTRY) -> RetValue {
     // let status = CompletionStatus::from_entry(status);
     // trace!("finished a write {}", status.bytes_transferred());
     // let me2 = StreamImp {
@@ -246,6 +263,7 @@ fn write_done(event: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
     // } else {
     //     me2.schedule_write(buf, new_pos, &mut me);
     // }
+    RetValue::OK
 }
 
 impl Event {
@@ -426,7 +444,7 @@ impl Selector {
         Ok(())
     }
     
-    pub unsafe fn register_socket(&mut self,
+    pub fn register_socket(&mut self,
                                   buffer: EventBuffer,
                                   entry: EventEntry) -> io::Result<()> {
         let socket = buffer.as_raw_socket();
@@ -439,6 +457,15 @@ impl Selector {
         let event = Event::new(buffer, entry);
         self.event_maps.insert(socket, EventImpl::new(event));
         self.check_socket_event(socket);
+        Ok(())
+    }
+
+    pub fn deregister_socket(&mut self, socket: SOCKET) -> io::Result<()> {
+        // let socket = buffer.as_raw_socket();
+        // println!("socket = {:?}", socket);
+        // if self.event_maps.contains_key(&socket) {
+        //     self.event_maps.remove(&socket);
+        // }
         Ok(())
     }
 

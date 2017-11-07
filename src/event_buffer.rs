@@ -121,6 +121,7 @@ pub struct EventBuffer {
     pub write_cache: Vec<u8>,
     pub is_in_read: bool,
     pub is_in_write: bool,
+    pub error: Result<()>,
 }
 
 impl EventBuffer {
@@ -133,6 +134,7 @@ impl EventBuffer {
             write_cache: Vec::with_capacity(capacity),
             is_in_read: false,
             is_in_write: false,
+            error: Ok(()),
             // accept_buf: AcceptAddrsBuf::new(),
             // accept_socket: TcpSocket::new_invalid(),
         }

@@ -25,7 +25,7 @@ pub use event_buffer::{Buffer, EventBuffer};
 pub mod sys;
 
 pub use event_flags::{EventFlags, FLAG_TIMEOUT, FLAG_READ, FLAG_WRITE, FLAG_PERSIST, FLAG_ERROR, FLAG_ACCEPT};
-pub use event_entry::{EventEntry, ACCEPT_CB, EVENT_CB, TIMER_CB};
+pub use event_entry::{EventEntry, ACCEPT_CB, EVENT_CB, TIMER_CB, ERROR_CB};
 pub use sys::{AsFd, FromFd};
 
 /// The macro convert Option<&mut Box<Any>> to &mut ty

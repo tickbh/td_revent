@@ -10,6 +10,7 @@ extern crate time;
 
 pub type ACCEPT_CB = fn(ev: &mut EventLoop, Result<TcpSocket>, data: Option<&mut Box<Any>>) -> RetValue;
 pub type EVENT_CB = fn(ev: &mut EventLoop, &mut EventBuffer, data: Option<&mut Box<Any>>) -> RetValue;
+pub type ERROR_CB = fn(ev: &mut EventLoop, EventBuffer, data: Option<Box<Any>>);
 pub type TIMER_CB = fn(ev: &mut EventLoop, timer: u32, data: Option<&mut Box<Any>>) -> RetValue;
 
 pub struct EventEntry {
@@ -20,6 +21,7 @@ pub struct EventEntry {
     pub ev_events: EventFlags,
     pub accept: Option<ACCEPT_CB>,
     pub event: Option<EVENT_CB>,
+    pub error: Option<ERROR_CB>,
     pub timer: Option<TIMER_CB>,
     pub data: Option<Box<Any>>,
 }
@@ -41,6 +43,7 @@ impl EventEntry {
             },
             accept: None,
             event: None,
+            error: None,
             timer: timer,
             data: data,
             time_id: 0,
@@ -51,6 +54,7 @@ impl EventEntry {
     pub fn new_event(ev_fd: SOCKET,
                ev_events: EventFlags,
                event: Option<EVENT_CB>,
+               error: Option<ERROR_CB>,
                data: Option<Box<Any>>)
                -> EventEntry {
         EventEntry {
@@ -59,6 +63,7 @@ impl EventEntry {
             ev_events: ev_events,
             accept: None,
             event: event,
+            error: None,
             timer: None,
             data: data,
             time_id: 0,
@@ -69,6 +74,7 @@ impl EventEntry {
     pub fn new_accept(ev_fd: SOCKET,
                ev_events: EventFlags,
                accept: Option<ACCEPT_CB>,
+               error: Option<ERROR_CB>,
                data: Option<Box<Any>>)
                -> EventEntry {
         EventEntry {
@@ -77,6 +83,7 @@ impl EventEntry {
             ev_events: ev_events,
             accept: accept,
             event: None,
+            error: None,
             timer: None,
             data: data,
             time_id: 0,
@@ -91,6 +98,7 @@ impl EventEntry {
             ev_events: ev_events,
             accept: None,
             event: None,
+            error: None,
             timer: None,
             data: None,
             time_id: 0,
