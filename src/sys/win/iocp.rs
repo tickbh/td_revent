@@ -172,6 +172,16 @@ impl CompletionPort {
         };
         super::cvt(ret).map(|_| ())
     }
+
+    pub fn post_info(&self, bytes: u32, flag: EventFlags, overlapped: *mut OVERLAPPED) -> io::Result<()> {
+        let ret = unsafe {
+            PostQueuedCompletionStatus(self.handle.raw(),
+                                       bytes,
+                                       flag.bits() as ULONG_PTR,
+                                       overlapped)
+        };
+        super::cvt(ret).map(|_| ())
+    }
 }
 
 impl AsRawHandle for CompletionPort {

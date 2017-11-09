@@ -1,4 +1,4 @@
-use {EventEntry, EventFlags, FLAG_READ, FLAG_WRITE, FLAG_ACCEPT, EventBuffer, EventLoop, RetValue};
+use {EventEntry, EventFlags, FLAG_READ, FLAG_WRITE, FLAG_ACCEPT, FLAG_READED, EventBuffer, EventLoop, RetValue};
 use std::collections::HashMap;
 use std::mem;
 use psocket::SOCKET;
@@ -12,7 +12,9 @@ use super::{TcpSocketExt, AcceptAddrsBuf};
 use psocket::{TcpSocket, SocketAddr};
 use winapi;
 use winapi::*;
+use kernel32;
 use ws2_32::*;
+use std::io::prelude::*;
 
 
 macro_rules! overlapped2arc {
@@ -58,6 +60,10 @@ impl Event {
     pub fn get_event_socket(&self) -> SOCKET {
         self.buffer.socket.as_raw_socket()
     }
+
+    // pub fn event_cb(&self, ev: &mut EventLoop) -> RetValue {
+    //     self.entry.EventCb(ev, &mut self.buffer)
+    // }
 }
 
 #[derive(Clone)]
@@ -147,8 +153,19 @@ impl Events {
     // }
 }
 
+unsafe fn cancel(socket: &TcpSocket,
+                 overlapped: &CbOverlapped) -> io::Result<()> {
+    let handle = socket.as_raw_socket() as winapi::HANDLE;
+    let ret = kernel32::CancelIoEx(handle, overlapped.as_mut_ptr());
+    if ret == 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
 fn accept_done(event: &mut EventLoop, status: &OVERLAPPED_ENTRY) -> RetValue {
-    println!("1111111111111111");
+    println!("accept_done 1111111111111111");
     let status = CompletionStatus::from_entry(status);
     let mut event = overlapped2arc!(status.overlapped(), Event, read);
     let socket = mem::replace(&mut event.accept_socket, TcpSocket::new_invalid().unwrap());
@@ -172,7 +189,7 @@ fn accept_done(event: &mut EventLoop, status: &OVERLAPPED_ENTRY) -> RetValue {
 
 
 fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) -> RetValue {
-    println!("1111111111111111");
+    println!("read_done 1111111111111111");
     let status = CompletionStatus::from_entry(status);
     let mut event = overlapped2arc!(status.overlapped(), Event, read);
     if event.is_accept() {
@@ -188,10 +205,10 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) -> RetValue 
             Ok(remote_addr) => { 
                 socket.set_peer_addr(remote_addr);
                 println!("socket new is = {:?}", socket);
-                event.entry.accept_cb(event_loop, Ok(socket))
+                event.entry.AcceptCb(event_loop, Ok(socket))
             }
             Err(e) => {
-                event.entry.accept_cb(event_loop, Err(e))
+                event.entry.AcceptCb(event_loop, Err(e))
             },
         };
 
@@ -207,42 +224,34 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) -> RetValue 
         }
         return RetValue::OK;
     } else {
-        
+        println!("read!!!!!!!!!!!!!!!");
+        println!("status.flag() {:?}", status.flag());
+        let mut event_clone = event.clone();
+        // 通知已读数据事件回来
+        if status.flag().contains(FLAG_READED) {
+            match event.entry.EventCb(event_loop, &mut event_clone.buffer) {
+                RetValue::OVER => {
+                    event_loop.del_event(event.get_event_socket(), EventFlags::all());
+                },
+                _ => (),
+            }
+        } else {
+            event.buffer.is_in_read = false;
+            let res = event_loop.selector._do_read_all(event.get_event_socket());
+            if event.buffer.has_read_buffer() {
+                match event.entry.EventCb(event_loop, &mut event_clone.buffer) {
+                    RetValue::OVER => {
+                        event_loop.del_event(event.get_event_socket(), EventFlags::all());
+                        return RetValue::OK;
+                    },
+                    _ => (),
+                }
+            }
+            if let Err(_) = res {
+                event_loop.del_event(event.get_event_socket(), EventFlags::all());
+            }
+        }
     }
-    // let status = CompletionStatus::from_entry(status);
-    // let me2 = StreamImp {
-    //     inner: unsafe { overlapped2arc!(status.overlapped(), StreamIo, read) },
-    // };
-
-    // let mut me = me2.inner();
-    // match mem::replace(&mut me.read, State::Empty) {
-    //     State::Pending(()) => {
-    //         trace!("finished a read: {}", status.bytes_transferred());
-    //         assert_eq!(status.bytes_transferred(), 0);
-    //         me.read = State::Ready(());
-    //         return me2.add_readiness(&mut me, Ready::readable())
-    //     }
-    //     s => me.read = s,
-    // }
-
-    // // If a read didn't complete, then the connect must have just finished.
-    // trace!("finished a connect");
-
-    // // By guarding with socket.result(), we ensure that a connection
-    // // was successfully made before performing operations requiring a
-    // // connected socket.
-    // match unsafe { me2.inner.socket.result(status.overlapped()) }
-    //     .and_then(|_| me2.inner.socket.connect_complete())
-    // {
-    //     Ok(()) => {
-    //         me2.add_readiness(&mut me, Ready::writable());
-    //         me2.schedule_read(&mut me);
-    //     }
-    //     Err(e) => {
-    //         me2.add_readiness(&mut me, Ready::readable() | Ready::writable());
-    //         me.read = State::Error(e);
-    //     }
-    // }
     RetValue::OK
 }
 
@@ -376,16 +385,126 @@ impl Selector {
         Ok(())
     }
 
-    pub fn post_read_event(&mut self, socket: SOCKET) -> io::Result<()> {
+    fn _check_can_read(socket: &TcpSocket, read: *mut OVERLAPPED) -> io::Result<bool> {
+        let res = unsafe {
+            socket.read_overlapped(&mut [], read)
+        };
+        println!("res = {:?}", res);
+        match res {
+            // Note that `Ok(true)` means that this completed immediately and
+            // our socket is readable. This typically means that the caller of
+            // this function (likely `read` above) can try again as an
+            // optimization and return bytes quickly.
+            //
+            // Normally, though, although the read completed immediately
+            // there's still an IOCP completion packet enqueued that we're going
+            // to receive.
+            //
+            // You can configure this behavior (miow) with
+            // SetFileCompletionNotificationModes to indicate that `Ok(true)`
+            // does **not** enqueue a completion packet. (This is the case
+            // for me.instant_notify)
+            //
+            // Note that apparently libuv has scary code to work around bugs in
+            // `WSARecv` for UDP sockets apparently for handles which have had
+            // the `SetFileCompletionNotificationModes` function called on them,
+            // worth looking into!
+            Ok(Some(_)) => {
+                return Ok(true)
+            }
+            Ok(_) => {
+                return Ok(false)
+            }
+            Err(e) => {
+                if e.raw_os_error() == Some(WSA_IO_PENDING as i32) {
+                    return Ok(false)
+                } else {
+                    return Err(e);
+                }
+            }
+        }
+    }
+    
+    fn _do_read(buffer: &mut EventBuffer, read: *mut OVERLAPPED) -> io::Result<usize> {
+        let res = unsafe {
+            buffer.socket.read_overlapped(&mut buffer.read_cache[..], read)
+        };
+        println!("_do_read _____ res = {:?}", res);
+        match res {
+            Ok(Some(n)) => {
+                buffer.read.write(&buffer.read_cache[..n])?;
+                return Ok(n)
+            }
+            Ok(_) => {
+                unreachable!();
+            }
+            Err(e) => {
+                return Err(e);
+            }
+        }
+    }
+
+    fn _do_read_all(&mut self, socket: SOCKET) -> io::Result<usize> {
+        let mut read_size = 0;
         if let Some(event) = self.event_maps.get_mut(&socket) {
             let event = &mut (*event.inner);
             if event.buffer.is_in_read {
-                return Ok(());
+                return Ok(read_size);
             }
             event.buffer.is_in_read = true;
-            unsafe {
-                event.buffer.socket.read_overlapped(&mut event.buffer.read_cache[..], event.read.as_mut_ptr())?;
+            println!("111111111111");
+            loop {
+
+                if Self::_check_can_read(&event.buffer.socket, event.read.as_mut_ptr())? {
+                    let read = Self::_do_read(&mut event.buffer, event.read.as_mut_ptr())?;
+                    if read == 0 {
+                        break;
+                    }
+                    read_size += read;
+                } else {
+                    break;
+                }
             }
+            println!("111111111111");
+        }
+        Ok(read_size)
+    }
+
+    pub fn post_read_event(&mut self, socket: SOCKET) -> io::Result<()> {
+
+        // if let Some(event) = self.event_maps.get_mut(&socket) {
+        //     let event = &mut (*event.inner);
+        //     if event.buffer.is_in_read {
+        //         return Ok(());
+        //     }
+        //     event.buffer.is_in_read = true;
+        //     unsafe {
+        //         event.buffer.socket.read_overlapped(&mut event.buffer.read_cache[..], event.read.as_mut_ptr())?;
+        //     }
+        //     // println!("111111111111");
+        //     // loop {
+
+        //     //     if Self::_check_can_read(&event.buffer.socket, event.read.as_mut_ptr())? {
+        //     //         let read = Self::_do_read(&mut event.buffer, event.read.as_mut_ptr())?;
+        //     //         if read == 0 {
+        //     //             break;
+        //     //         }
+        //     //         read_size += read;
+        //     //     } else {
+        //     //         break;
+        //     //     }
+        //     // }
+        //     // println!("111111111111");
+        // }
+
+
+        if self._do_read_all(socket)? > 0 {
+            let overlap = {
+                let event = self.event_maps.get_mut(&socket).unwrap();
+                let event = &mut (*event.inner);
+                event.read.as_mut_ptr()
+            };
+            self.port.post_info(0, FLAG_READED, overlap)?;
         }
         Ok(())
     }
@@ -440,7 +559,6 @@ impl Selector {
                 self.post_write_event(socket)?;
             }
         }
-
         Ok(())
     }
     
@@ -456,7 +574,14 @@ impl Selector {
         self.port.add_socket(entry.ev_events, &buffer.socket)?;
         let event = Event::new(buffer, entry);
         self.event_maps.insert(socket, EventImpl::new(event));
-        self.check_socket_event(socket);
+        match self.check_socket_event(socket) {
+            Err(e) => {
+
+            }
+            _ => {
+
+            }
+        }
         Ok(())
     }
 

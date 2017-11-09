@@ -2,10 +2,10 @@
 use {Timer, EventEntry};
 use sys::Selector;
 use std::collections::HashMap;
-use {EventFlags, FLAG_PERSIST, EventBuffer, TIMER_CB, ACCEPT_CB, EVENT_CB, ERROR_CB};
+use {EventFlags, FLAG_PERSIST, EventBuffer, TimerCb, AcceptCb, EventCb, EndCb};
 use std::io;
 use std::any::Any;
-use psocket::SOCKET;
+use psocket::{TcpSocket, SOCKET};
 
 pub enum RetValue {
     OK,
@@ -23,7 +23,7 @@ pub struct EventLoopConfig {
     pub messages_per_tick: usize,
 
     // == Timer ==
-    pub timer_capacity: usize,
+    pub buffer_capacity: usize,
     pub time_max_id: u32,
 }
 
@@ -33,7 +33,7 @@ impl Default for EventLoopConfig {
             io_poll_timeout_ms: 1_000,
             notify_capacity: 4_096,
             messages_per_tick: 256,
-            timer_capacity: 65_536,
+            buffer_capacity: 65_536,
             time_max_id: u32::max_value() / 2,
         }
     }
@@ -127,6 +127,10 @@ impl EventLoop {
         Ok(())
     }
 
+    pub fn new_buff(&self, socket: TcpSocket) -> EventBuffer {
+        EventBuffer::new(socket, self.config.buffer_capacity)
+    }
+
     /// 添加定时器, 如果time_step为0,则添加定时器失败
     pub fn add_timer(&mut self, entry: EventEntry) -> u32 {
         self.timer.add_timer(entry)
@@ -137,9 +141,9 @@ impl EventLoop {
     /// 添加定时器, 如果time_step为0,则添加定时器失败
     pub fn add_new_timer(&mut self, tick_step: u64,
                      tick_repeat: bool,
-                     timer_cb: Option<TIMER_CB>,
+                     TimerCb: Option<TimerCb>,
                      data: Option<Box<Any>>) -> u32 {
-        self.timer.add_timer(EventEntry::new_timer(tick_step, tick_repeat, timer_cb, data))
+        self.timer.add_timer(EventEntry::new_timer(tick_step, tick_repeat, TimerCb, data))
     }
 
     /// 删除指定的定时器id, 定时器内部实现细节为红黑树, 删除定时器的时间为O(logn), 如果存在该定时器, 则返回相关的定时器信息
@@ -163,8 +167,8 @@ impl EventLoop {
     /// 添加定时器, ev_fd为socket的句柄id, ev_events为监听读, 写, 持久的信息
     pub fn add_new_event(&mut self, ev_fd: SOCKET,
                         ev_events: EventFlags,
-                        event: Option<EVENT_CB>,
-                        error: Option<ERROR_CB>,
+                        event: Option<EventCb>,
+                        error: Option<EndCb>,
                         data: Option<Box<Any>>) {
         self.add_event(EventEntry::new_event(ev_fd, ev_events, event, error, data))
     }
@@ -172,8 +176,8 @@ impl EventLoop {
     /// 添加定时器, ev_fd为socket的句柄id, ev_events为监听读, 写, 持久的信息
     pub fn add_new_accept(&mut self, ev_fd: SOCKET,
                         ev_events: EventFlags,
-                        accept: Option<ACCEPT_CB>,
-                        error: Option<ERROR_CB>,
+                        accept: Option<AcceptCb>,
+                        error: Option<EndCb>,
                         data: Option<Box<Any>>) {
         self.add_event(EventEntry::new_accept(ev_fd, ev_events, accept, error, data))
     }
@@ -196,7 +200,7 @@ impl EventLoop {
                 Some(mut entry) => {
                     is_op = true;
                     let time_id = entry.time_id;
-                    let is_over = match entry.timer_cb(self, time_id) {
+                    let is_over = match entry.TimerCb(self, time_id) {
                         RetValue::OVER => true,
                         _ => !entry.ev_events.contains(FLAG_PERSIST),
                     };

@@ -3,6 +3,7 @@ use std::ptr;
 use std::fmt;
 use std::cmp;
 use psocket::{self, TcpSocket};
+use winapi::*;
 
 pub struct Buffer {
     val: Vec<u8>,
@@ -118,6 +119,7 @@ pub struct EventBuffer {
     pub write: Buffer,
     pub socket: TcpSocket,
     pub read_cache: Vec<u8>,
+    pub read_bytes: DWORD,
     pub write_cache: Vec<u8>,
     pub is_in_read: bool,
     pub is_in_write: bool,
@@ -126,12 +128,14 @@ pub struct EventBuffer {
 
 impl EventBuffer {
     pub fn new(socket: TcpSocket, capacity: usize) -> EventBuffer {
+        let capacity = cmp::max(capacity, 1024);
         EventBuffer {
             read: Buffer::new(),
             write: Buffer::new(),
             socket: socket,
-            read_cache: Vec::with_capacity(capacity),
+            read_cache: vec![0; capacity],
             write_cache: Vec::with_capacity(capacity),
+            read_bytes: 0,
             is_in_read: false,
             is_in_write: false,
             error: Ok(()),
@@ -142,5 +146,9 @@ impl EventBuffer {
 
     pub fn as_raw_socket(&self) -> psocket::SOCKET {
         self.socket.as_raw_socket()
+    }
+
+    pub fn has_read_buffer(&self) -> bool {
+        !self.read.empty()
     }
 }

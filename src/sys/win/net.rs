@@ -447,6 +447,7 @@ unsafe fn ptrs_to_socket_addr(ptr: *const SOCKADDR,
 }
 
 unsafe fn slice2buf(slice: &[u8]) -> WSABUF {
+    println!("read len = {:?}", cmp::min(slice.len(), <u_long>::max_value() as usize) as u_long);
     WSABUF {
         len: cmp::min(slice.len(), <u_long>::max_value() as usize) as u_long,
         buf: slice.as_ptr() as *mut _,
@@ -474,11 +475,15 @@ impl TcpSocketExt for TcpSocket {
                               buf: &mut [u8],
                               overlapped: *mut OVERLAPPED)
                               -> io::Result<Option<usize>> {
+                                  println!("buf len = {:?}", buf.len());
         let mut buf = slice2buf(buf);
         let mut flags = 0;
         let mut bytes_read: DWORD = 0;
         let r = WSARecv(self.as_raw_socket(), &mut buf, 1,
                         &mut bytes_read, &mut flags, overlapped, None);
+                        println!("bytes_read = {:?}", bytes_read);
+                        println!("flags = {:?}", flags);
+                        println!("r = {:?}", r);
         cvt(r, bytes_read)
     }
 

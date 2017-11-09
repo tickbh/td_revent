@@ -6,5 +6,6 @@ bitflags! {
             const FLAG_PERSIST   = 0b00001000,
             const FLAG_ERROR     = 0b00010000,
             const FLAG_ACCEPT    = 0b00100000,
+            const FLAG_READED    = 0b01000000,
         }
     }

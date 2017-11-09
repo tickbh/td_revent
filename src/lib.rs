@@ -4,6 +4,9 @@ extern crate libc;
 #[cfg(windows)]
 extern crate winapi;
 #[cfg(windows)]
+extern crate kernel32;
+
+#[cfg(windows)]
 extern crate ws2_32;
 
 extern crate nix;
@@ -24,8 +27,8 @@ pub use event_buffer::{Buffer, EventBuffer};
 
 pub mod sys;
 
-pub use event_flags::{EventFlags, FLAG_TIMEOUT, FLAG_READ, FLAG_WRITE, FLAG_PERSIST, FLAG_ERROR, FLAG_ACCEPT};
-pub use event_entry::{EventEntry, ACCEPT_CB, EVENT_CB, TIMER_CB, ERROR_CB};
+pub use event_flags::{EventFlags, FLAG_TIMEOUT, FLAG_READ, FLAG_WRITE, FLAG_PERSIST, FLAG_ERROR, FLAG_ACCEPT, FLAG_READED};
+pub use event_entry::{EventEntry, AcceptCb, EventCb, TimerCb, EndCb};
 pub use sys::{AsFd, FromFd};
 
 /// The macro convert Option<&mut Box<Any>> to &mut ty

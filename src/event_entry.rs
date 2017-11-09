@@ -8,10 +8,10 @@ use psocket::{TcpSocket, SOCKET, INVALID_SOCKET};
 
 extern crate time;
 
-pub type ACCEPT_CB = fn(ev: &mut EventLoop, Result<TcpSocket>, data: Option<&mut Box<Any>>) -> RetValue;
-pub type EVENT_CB = fn(ev: &mut EventLoop, &mut EventBuffer, data: Option<&mut Box<Any>>) -> RetValue;
-pub type ERROR_CB = fn(ev: &mut EventLoop, EventBuffer, data: Option<Box<Any>>);
-pub type TIMER_CB = fn(ev: &mut EventLoop, timer: u32, data: Option<&mut Box<Any>>) -> RetValue;
+pub type AcceptCb = fn(ev: &mut EventLoop, Result<TcpSocket>, data: Option<&mut Box<Any>>) -> RetValue;
+pub type EventCb = fn(ev: &mut EventLoop, &mut EventBuffer, data: Option<&mut Box<Any>>) -> RetValue;
+pub type EndCb = fn(ev: &mut EventLoop, EventBuffer, data: Option<Box<Any>>);
+pub type TimerCb = fn(ev: &mut EventLoop, timer: u32, data: Option<&mut Box<Any>>) -> RetValue;
 
 pub struct EventEntry {
     pub ev_fd: SOCKET,
@@ -19,10 +19,10 @@ pub struct EventEntry {
     pub tick_ms: u64,
     pub tick_step: u64,
     pub ev_events: EventFlags,
-    pub accept: Option<ACCEPT_CB>,
-    pub event: Option<EVENT_CB>,
-    pub error: Option<ERROR_CB>,
-    pub timer: Option<TIMER_CB>,
+    pub accept: Option<AcceptCb>,
+    pub event: Option<EventCb>,
+    pub end: Option<EndCb>,
+    pub timer: Option<TimerCb>,
     pub data: Option<Box<Any>>,
 }
 
@@ -30,7 +30,7 @@ impl EventEntry {
     /// tick_step is us
     pub fn new_timer(tick_step: u64,
                      tick_repeat: bool,
-                     timer: Option<TIMER_CB>,
+                     timer: Option<TimerCb>,
                      data: Option<Box<Any>>)
                      -> EventEntry {
         EventEntry {
@@ -43,7 +43,7 @@ impl EventEntry {
             },
             accept: None,
             event: None,
-            error: None,
+            end: None,
             timer: timer,
             data: data,
             time_id: 0,
@@ -53,8 +53,8 @@ impl EventEntry {
 
     pub fn new_event(ev_fd: SOCKET,
                ev_events: EventFlags,
-               event: Option<EVENT_CB>,
-               error: Option<ERROR_CB>,
+               event: Option<EventCb>,
+               end: Option<EndCb>,
                data: Option<Box<Any>>)
                -> EventEntry {
         EventEntry {
@@ -63,7 +63,7 @@ impl EventEntry {
             ev_events: ev_events,
             accept: None,
             event: event,
-            error: None,
+            end: None,
             timer: None,
             data: data,
             time_id: 0,
@@ -73,8 +73,8 @@ impl EventEntry {
 
     pub fn new_accept(ev_fd: SOCKET,
                ev_events: EventFlags,
-               accept: Option<ACCEPT_CB>,
-               error: Option<ERROR_CB>,
+               accept: Option<AcceptCb>,
+               end: Option<EndCb>,
                data: Option<Box<Any>>)
                -> EventEntry {
         EventEntry {
@@ -83,7 +83,7 @@ impl EventEntry {
             ev_events: ev_events,
             accept: accept,
             event: None,
-            error: None,
+            end: None,
             timer: None,
             data: data,
             time_id: 0,
@@ -98,7 +98,7 @@ impl EventEntry {
             ev_events: ev_events,
             accept: None,
             event: None,
-            error: None,
+            end: None,
             timer: None,
             data: None,
             time_id: 0,
@@ -106,7 +106,7 @@ impl EventEntry {
         }
     }
 
-    pub fn accept_cb(&mut self, ev: &mut EventLoop, tcp: Result<TcpSocket>) -> RetValue {
+    pub fn AcceptCb(&mut self, ev: &mut EventLoop, tcp: Result<TcpSocket>) -> RetValue {
         if self.accept.is_none() {
             return RetValue::OK;
         }
@@ -114,7 +114,7 @@ impl EventEntry {
         self.accept.unwrap()(ev, tcp, self.data.as_mut())
     }
 
-    pub fn event_cb(&mut self, ev: &mut EventLoop, event: &mut EventBuffer) -> RetValue {
+    pub fn EventCb(&mut self, ev: &mut EventLoop, event: &mut EventBuffer) -> RetValue {
         if self.event.is_none() {
             return RetValue::OK;
         }
@@ -122,7 +122,7 @@ impl EventEntry {
         self.event.unwrap()(ev, event, self.data.as_mut())
     }
 
-    pub fn timer_cb(&mut self, ev: &mut EventLoop, timer: u32) -> RetValue {
+    pub fn TimerCb(&mut self, ev: &mut EventLoop, timer: u32) -> RetValue {
         if self.timer.is_none() {
             return RetValue::OK;
         }
