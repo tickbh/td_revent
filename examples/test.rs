@@ -65,7 +65,15 @@ fn server_read_callback(ev : &mut EventLoop, buffer: &mut EventBuffer, data : Op
     // let str = String::from_utf8_lossy(&data[0..size]);
     // println!("{:?}", str);
     // socket.write(&data[0..size]).unwrap();
-    RetValue::OK
+    RetValue::OVER
+}
+
+
+
+fn end_callback(ev : &mut EventLoop, buffer: &mut EventBuffer, data : Option<Box<Any>>) {
+    println!("end_callback!!!!!!!!!!!!!!!!!!!!! {:?}", buffer.socket);
+    println!("end_callback!!!!!!!!!!! read data {:?}", buffer.read);
+
 }
 
 fn accept_callback(ev : &mut EventLoop, tcp: Result<TcpSocket>, data : Option<&mut Box<Any>>) -> RetValue {
@@ -75,7 +83,7 @@ fn accept_callback(ev : &mut EventLoop, tcp: Result<TcpSocket>, data : Option<&m
 
     let socket = new_socket.as_raw_socket();
     let buffer = ev.new_buff(new_socket);
-    ev.add_register_socket(buffer, EventEntry::new_event(socket, FLAG_READ | FLAG_PERSIST, Some(server_read_callback), None, None));
+    ev.add_register_socket(buffer, EventEntry::new_event(socket, FLAG_READ | FLAG_PERSIST, Some(server_read_callback), Some(end_callback), None));
     RetValue::OK
 }
 
@@ -99,7 +107,7 @@ fn main() {
     let buffer = event_loop.new_buff(listener);
     event_loop.add_register_socket(buffer, EventEntry::new_accept(socket, FLAG_READ | FLAG_PERSIST | FLAG_ACCEPT, Some(accept_callback), None, None));
     
-    event_loop.add_new_event(client.as_raw_socket(), FLAG_READ | FLAG_PERSIST, Some(client_read_callback), None, Some(Box::new(client)));
+    event_loop.add_new_event(client.as_raw_socket(), FLAG_READ | FLAG_PERSIST, Some(client_read_callback), Some(end_callback), Some(Box::new(client)));
 
     // mem::forget(listener);
     // mem::forget(client);

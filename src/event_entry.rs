@@ -10,7 +10,7 @@ extern crate time;
 
 pub type AcceptCb = fn(ev: &mut EventLoop, Result<TcpSocket>, data: Option<&mut Box<Any>>) -> RetValue;
 pub type EventCb = fn(ev: &mut EventLoop, &mut EventBuffer, data: Option<&mut Box<Any>>) -> RetValue;
-pub type EndCb = fn(ev: &mut EventLoop, EventBuffer, data: Option<Box<Any>>);
+pub type EndCb = fn(ev: &mut EventLoop, &mut EventBuffer, data: Option<Box<Any>>);
 pub type TimerCb = fn(ev: &mut EventLoop, timer: u32, data: Option<&mut Box<Any>>) -> RetValue;
 
 pub struct EventEntry {
@@ -63,7 +63,7 @@ impl EventEntry {
             ev_events: ev_events,
             accept: None,
             event: event,
-            end: None,
+            end: end,
             timer: None,
             data: data,
             time_id: 0,
@@ -83,7 +83,7 @@ impl EventEntry {
             ev_events: ev_events,
             accept: accept,
             event: None,
-            end: None,
+            end: end,
             timer: None,
             data: data,
             time_id: 0,
@@ -106,7 +106,7 @@ impl EventEntry {
         }
     }
 
-    pub fn AcceptCb(&mut self, ev: &mut EventLoop, tcp: Result<TcpSocket>) -> RetValue {
+    pub fn accept_cb(&mut self, ev: &mut EventLoop, tcp: Result<TcpSocket>) -> RetValue {
         if self.accept.is_none() {
             return RetValue::OK;
         }
@@ -128,6 +128,15 @@ impl EventEntry {
         }
 
         self.timer.unwrap()(ev, timer, self.data.as_mut())
+    }
+
+    pub fn end_cb(&mut self, ev: &mut EventLoop, event: &mut EventBuffer) {
+        println!("end_cb = {:?}", self.end.is_none());
+        if self.end.is_none() {
+            return;
+        }
+
+        self.end.unwrap()(ev, event, self.data.take())
     }
 
 }

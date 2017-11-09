@@ -205,10 +205,10 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) -> RetValue 
             Ok(remote_addr) => { 
                 socket.set_peer_addr(remote_addr);
                 println!("socket new is = {:?}", socket);
-                event.entry.AcceptCb(event_loop, Ok(socket))
+                event.entry.accept_cb(event_loop, Ok(socket))
             }
             Err(e) => {
-                event.entry.AcceptCb(event_loop, Err(e))
+                event.entry.accept_cb(event_loop, Err(e))
             },
         };
 
@@ -224,33 +224,68 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) -> RetValue 
         }
         return RetValue::OK;
     } else {
-        println!("read!!!!!!!!!!!!!!!");
-        println!("status.flag() {:?}", status.flag());
+        let mut bytes_transferred = status.bytes_transferred() as usize;
+        println!("bytes_transferred = {:?}", bytes_transferred);
         let mut event_clone = event.clone();
-        // 通知已读数据事件回来
-        if status.flag().contains(FLAG_READED) {
+        if bytes_transferred > 0 {
+            let _ = event.buffer.read.write(&event_clone.buffer.read_cache[..bytes_transferred]);
+        }
+        
+
+        let res = event_loop.selector._do_read_all(event.get_event_socket());
+        if event.buffer.has_read_buffer() {
             match event.entry.EventCb(event_loop, &mut event_clone.buffer) {
                 RetValue::OVER => {
                     event_loop.del_event(event.get_event_socket(), EventFlags::all());
+                    return RetValue::OK;
                 },
                 _ => (),
             }
-        } else {
-            event.buffer.is_in_read = false;
-            let res = event_loop.selector._do_read_all(event.get_event_socket());
-            if event.buffer.has_read_buffer() {
-                match event.entry.EventCb(event_loop, &mut event_clone.buffer) {
-                    RetValue::OVER => {
-                        event_loop.del_event(event.get_event_socket(), EventFlags::all());
-                        return RetValue::OK;
-                    },
-                    _ => (),
-                }
-            }
-            if let Err(_) = res {
+        }
+        println!("res = {:?}", res);
+        match res {
+            Err(_) => {
                 event_loop.del_event(event.get_event_socket(), EventFlags::all());
             }
+            Ok(n) => {
+                bytes_transferred = bytes_transferred + n;
+            }
         }
+
+        if bytes_transferred == 0 {
+            println!("all receive is null");
+            // 投递完成事件却没有任何数据返回, 则认为该socket已被关闭
+            event_loop.del_event(event.get_event_socket(), EventFlags::all());
+            return RetValue::OK;
+        }
+
+        // println!("read!!!!!!!!!!!!!!!");
+        // println!("status.flag() {:?}", status.flag());
+        // let mut event_clone = event.clone();
+        // // 通知已读数据事件回来
+        // if status.flag().contains(FLAG_READED) {
+        //     match event.entry.EventCb(event_loop, &mut event_clone.buffer) {
+        //         RetValue::OVER => {
+        //             event_loop.del_event(event.get_event_socket(), EventFlags::all());
+        //         },
+        //         _ => (),
+        //     }
+        // } else {
+        //     event.buffer.is_in_read = false;
+        //     let res = event_loop.selector._do_read_all(event.get_event_socket());
+        //     if event.buffer.has_read_buffer() {
+        //         match event.entry.EventCb(event_loop, &mut event_clone.buffer) {
+        //             RetValue::OVER => {
+        //                 event_loop.del_event(event.get_event_socket(), EventFlags::all());
+        //                 return RetValue::OK;
+        //             },
+        //             _ => (),
+        //         }
+        //     }
+        //     if let Err(_) = res {
+        //         event_loop.del_event(event.get_event_socket(), EventFlags::all());
+        //     }
+        // }
     }
     RetValue::OK
 }
@@ -335,7 +370,6 @@ impl Selector {
             callback(event, status.entry());
         }
 
-        // println!("returning");
         Ok(0)
     }
 
@@ -385,127 +419,139 @@ impl Selector {
         Ok(())
     }
 
-    fn _check_can_read(socket: &TcpSocket, read: *mut OVERLAPPED) -> io::Result<bool> {
-        let res = unsafe {
-            socket.read_overlapped(&mut [], read)
-        };
-        println!("res = {:?}", res);
-        match res {
-            // Note that `Ok(true)` means that this completed immediately and
-            // our socket is readable. This typically means that the caller of
-            // this function (likely `read` above) can try again as an
-            // optimization and return bytes quickly.
-            //
-            // Normally, though, although the read completed immediately
-            // there's still an IOCP completion packet enqueued that we're going
-            // to receive.
-            //
-            // You can configure this behavior (miow) with
-            // SetFileCompletionNotificationModes to indicate that `Ok(true)`
-            // does **not** enqueue a completion packet. (This is the case
-            // for me.instant_notify)
-            //
-            // Note that apparently libuv has scary code to work around bugs in
-            // `WSARecv` for UDP sockets apparently for handles which have had
-            // the `SetFileCompletionNotificationModes` function called on them,
-            // worth looking into!
-            Ok(Some(_)) => {
-                return Ok(true)
-            }
-            Ok(_) => {
-                return Ok(false)
-            }
-            Err(e) => {
-                if e.raw_os_error() == Some(WSA_IO_PENDING as i32) {
-                    return Ok(false)
-                } else {
-                    return Err(e);
-                }
-            }
-        }
-    }
+    // fn _check_can_read(socket: &TcpSocket, read: *mut OVERLAPPED) -> io::Result<bool> {
+    //     let res = unsafe {
+    //         socket.read_overlapped(&mut [], read)
+    //     };
+    //     println!("res = {:?}", res);
+    //     match res {
+    //         // Note that `Ok(true)` means that this completed immediately and
+    //         // our socket is readable. This typically means that the caller of
+    //         // this function (likely `read` above) can try again as an
+    //         // optimization and return bytes quickly.
+    //         //
+    //         // Normally, though, although the read completed immediately
+    //         // there's still an IOCP completion packet enqueued that we're going
+    //         // to receive.
+    //         //
+    //         // You can configure this behavior (miow) with
+    //         // SetFileCompletionNotificationModes to indicate that `Ok(true)`
+    //         // does **not** enqueue a completion packet. (This is the case
+    //         // for me.instant_notify)
+    //         //
+    //         // Note that apparently libuv has scary code to work around bugs in
+    //         // `WSARecv` for UDP sockets apparently for handles which have had
+    //         // the `SetFileCompletionNotificationModes` function called on them,
+    //         // worth looking into!
+    //         Ok(Some(_)) => {
+    //             return Ok(true)
+    //         }
+    //         Ok(_) => {
+    //             return Ok(false)
+    //         }
+    //         Err(e) => {
+    //             return Err(e);
+    //         }
+    //     }
+    // }
     
-    fn _do_read(buffer: &mut EventBuffer, read: *mut OVERLAPPED) -> io::Result<usize> {
-        let res = unsafe {
-            buffer.socket.read_overlapped(&mut buffer.read_cache[..], read)
-        };
-        println!("_do_read _____ res = {:?}", res);
-        match res {
-            Ok(Some(n)) => {
-                buffer.read.write(&buffer.read_cache[..n])?;
-                return Ok(n)
-            }
-            Ok(_) => {
-                unreachable!();
-            }
-            Err(e) => {
-                return Err(e);
-            }
-        }
-    }
+    // fn _do_read(buffer: &mut EventBuffer, read: *mut OVERLAPPED) -> io::Result<usize> {
+    //     let res = unsafe {
+    //         buffer.socket.read_overlapped(&mut buffer.read_cache[..], read)
+    //     };
+    //     println!("_do_read _____ res = {:?}", res);
+    //     match res {
+    //         Ok(Some(n)) => {
+    //             buffer.read.write(&buffer.read_cache[..n])?;
+    //             return Ok(n)
+    //         }
+    //         Ok(_) => {
+    //             unreachable!();
+    //         }
+    //         Err(e) => {
+    //             return Err(e);
+    //         }
+    //     }
+    // }
 
     fn _do_read_all(&mut self, socket: SOCKET) -> io::Result<usize> {
         let mut read_size = 0;
         if let Some(event) = self.event_maps.get_mut(&socket) {
             let event = &mut (*event.inner);
-            if event.buffer.is_in_read {
-                return Ok(read_size);
-            }
-            event.buffer.is_in_read = true;
-            println!("111111111111");
-            loop {
+            // if event.buffer.is_in_read {
+            //     return Ok(read_size);
+            // }
+            // event.buffer.is_in_read = true;
 
-                if Self::_check_can_read(&event.buffer.socket, event.read.as_mut_ptr())? {
-                    let read = Self::_do_read(&mut event.buffer, event.read.as_mut_ptr())?;
-                    if read == 0 {
+            let read = event.read.as_mut_ptr();
+            let buffer = &mut event.buffer;
+            loop {
+                let res = unsafe {
+                    buffer.socket.read_overlapped(&mut buffer.read_cache[..], read)
+                };
+                println!("_do_read _____ res = {:?}", res);
+                match res {
+                    Ok(Some(n)) => {
+                        if n == 0 {
+                            break;
+                        }
+                        read_size += n;
+                        buffer.read.write(&buffer.read_cache[..n])?;
+                    }
+                    Ok(_) => {
                         break;
                     }
-                    read_size += read;
-                } else {
-                    break;
+                    Err(e) => {
+                        return Err(e);
+                    }
                 }
             }
-            println!("111111111111");
+
+            // println!("111111111111");
+            // loop {
+
+            //     if Self::_check_can_read(&event.buffer.socket, event.read.as_mut_ptr())? {
+            //         let read = Self::_do_read(&mut event.buffer, event.read.as_mut_ptr())?;
+            //         if read == 0 {
+            //             break;
+            //         }
+            //         read_size += read;
+            //     } else {
+            //         break;
+            //     }
+            // }
+            // println!("111111111111");
         }
         Ok(read_size)
     }
 
     pub fn post_read_event(&mut self, socket: SOCKET) -> io::Result<()> {
-
-        // if let Some(event) = self.event_maps.get_mut(&socket) {
-        //     let event = &mut (*event.inner);
-        //     if event.buffer.is_in_read {
-        //         return Ok(());
-        //     }
-        //     event.buffer.is_in_read = true;
-        //     unsafe {
-        //         event.buffer.socket.read_overlapped(&mut event.buffer.read_cache[..], event.read.as_mut_ptr())?;
-        //     }
-        //     // println!("111111111111");
-        //     // loop {
-
-        //     //     if Self::_check_can_read(&event.buffer.socket, event.read.as_mut_ptr())? {
-        //     //         let read = Self::_do_read(&mut event.buffer, event.read.as_mut_ptr())?;
-        //     //         if read == 0 {
-        //     //             break;
-        //     //         }
-        //     //         read_size += read;
-        //     //     } else {
-        //     //         break;
-        //     //     }
-        //     // }
-        //     // println!("111111111111");
-        // }
-
-
-        if self._do_read_all(socket)? > 0 {
-            let overlap = {
-                let event = self.event_maps.get_mut(&socket).unwrap();
-                let event = &mut (*event.inner);
-                event.read.as_mut_ptr()
+        if let Some(event) = self.event_maps.get_mut(&socket) {
+            let event = &mut (*event.inner);
+            if event.buffer.is_in_read {
+                return Ok(());
+            }
+            event.buffer.is_in_read = true;
+            let res = unsafe {
+                event.buffer.socket.read_overlapped(&mut [], event.read.as_mut_ptr())?
             };
-            self.port.post_info(0, FLAG_READED, overlap)?;
+            match res {
+                Some(n) => {
+                    self.port.post_info(0, FLAG_READED, event.read.as_mut_ptr())?;
+                }
+                None => (),
+            }
+            println!("post_read_event res = {:?}", res);
         }
+
+        // if self._do_read_all(socket)? > 0 {
+        //     let overlap = {
+        //         let event = self.event_maps.get_mut(&socket).unwrap();
+        //         let event = &mut (*event.inner);
+        //         event.read.as_mut_ptr()
+        //     };
+        //     self.port.post_info(0, FLAG_READED, overlap)?;
+        // }
         Ok(())
     }
 
@@ -548,6 +594,8 @@ impl Selector {
             (event.inner).entry.ev_events
         };
 
+        println!("check_socket_event flag = {:?}", flag);
+
         if flag.contains(FLAG_ACCEPT) {
             self.post_accept_event(socket)?;
         } else {
@@ -585,6 +633,24 @@ impl Selector {
         Ok(())
     }
 
+    pub fn unregister_socket(event_loop: &mut EventLoop, socket: SOCKET, _flags: EventFlags) -> io::Result<()> {
+        println!("unregister_socket socket = {:?} ---------", socket);
+        if let Some(mut ev) = event_loop.selector.event_maps.remove(&socket) {
+            let event = &mut (*ev.clone().inner);
+            let event_clone = &mut (*ev.inner);
+            unsafe {
+                let _ = cancel(&event.buffer.socket, &event.read);
+                let _ = cancel(&event.buffer.socket, &event.write);
+            }
+            println!("aaaaaaaaaaaaaaaaaaaaaaaaa");
+            event.entry.end_cb(event_loop, &mut event_clone.buffer);
+        }
+        println!("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! {:?}", socket);
+        // panic!("!11111111111111");
+        Ok(())
+
+    }
+
     pub fn deregister_socket(&mut self, socket: SOCKET) -> io::Result<()> {
         // let socket = buffer.as_raw_socket();
         // println!("socket = {:?}", socket);
@@ -604,7 +670,30 @@ impl Selector {
         // }
     }
 
-    pub fn deregister(&mut self, fd: SOCKET, flag: EventFlags) {
+    pub fn deregister(&mut self, socket: SOCKET, _flag: EventFlags) {
+        // if let Some(event) = self.event_maps.remove(&socket) {
+            
+        //     cancel(event.buffer.socket, event.read);
+        //     cancel(event.buffer.socket, event.write);
+        // }
+
+        // if self.event_maps.contains_key(&socket) {
+        //     self.event_maps.remove(&socket);
+        // }
+
+        // self.port.add_socket(entry.ev_events, &buffer.socket)?;
+        // let event = Event::new(buffer, entry);
+        // self.event_maps.insert(socket, EventImpl::new(event));
+        // match self.check_socket_event(socket) {
+        //     Err(e) => {
+
+        //     }
+        //     _ => {
+
+        //     }
+        // }
+        // Ok(())
+
         // let fd = fd as SOCKET;
         // fn search_index(vec: &Vec<SOCKET>, value: &SOCKET) -> Option<usize> {
         //     for (i, v) in vec.iter().enumerate() {

@@ -141,9 +141,9 @@ impl EventLoop {
     /// 添加定时器, 如果time_step为0,则添加定时器失败
     pub fn add_new_timer(&mut self, tick_step: u64,
                      tick_repeat: bool,
-                     TimerCb: Option<TimerCb>,
+                     timer_cb: Option<TimerCb>,
                      data: Option<Box<Any>>) -> u32 {
-        self.timer.add_timer(EventEntry::new_timer(tick_step, tick_repeat, TimerCb, data))
+        self.timer.add_timer(EventEntry::new_timer(tick_step, tick_repeat, timer_cb, data))
     }
 
     /// 删除指定的定时器id, 定时器内部实现细节为红黑树, 删除定时器的时间为O(logn), 如果存在该定时器, 则返回相关的定时器信息
@@ -184,7 +184,8 @@ impl EventLoop {
 
     /// 删除指定socket的句柄信息
     pub fn del_event(&mut self, ev_fd: SOCKET, ev_events: EventFlags) -> Option<EventEntry> {
-        let _ = self.selector.deregister(ev_fd, ev_events);
+        let _ = Selector::unregister_socket(self, ev_fd, ev_events);
+        // let _ = self.selector.deregister(ev_fd, ev_events);
         None
         // self.event_maps.remove(&ev_fd)
     }
