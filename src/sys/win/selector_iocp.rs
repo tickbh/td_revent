@@ -226,11 +226,21 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) -> RetValue 
     } else {
         let mut bytes_transferred = status.bytes_transferred() as usize;
         println!("bytes_transferred = {:?}", bytes_transferred);
+        if bytes_transferred == 0 {
+            Selector::_unregister_socket(event_loop, event.buffer.as_raw_socket(), EventFlags::all());
+            return RetValue::OK;
+        }
         let mut event_clone = event.clone();
+        println!("len = {:?}", event_clone.buffer.read_cache.len());
+        println!("read = {:?}", event.buffer.read);
+        println!("socket = {:?}", event.buffer.as_raw_socket());
         if bytes_transferred > 0 {
+            println!("???????");
             let _ = event.buffer.read.write(&event_clone.buffer.read_cache[..bytes_transferred]);
+            println!("!!!!!!!");
         }
         
+        println!("2222222222222222");
 
         let res = event_loop.selector._do_read_all(event.get_event_socket());
         if event.buffer.has_read_buffer() {
@@ -242,7 +252,7 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) -> RetValue 
                 _ => (),
             }
         }
-        println!("res = {:?}", res);
+        println!("11111111111res = {:?}", res);
         match res {
             Err(_) => {
                 event_loop.del_event(event.get_event_socket(), EventFlags::all());
@@ -252,12 +262,12 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) -> RetValue 
             }
         }
 
-        if bytes_transferred == 0 {
-            println!("all receive is null");
-            // 投递完成事件却没有任何数据返回, 则认为该socket已被关闭
-            event_loop.del_event(event.get_event_socket(), EventFlags::all());
-            return RetValue::OK;
-        }
+        // if bytes_transferred == 0 {
+        //     println!("all receive is null");
+        //     // 投递完成事件却没有任何数据返回, 则认为该socket已被关闭
+        //     event_loop.del_event(event.get_event_socket(), EventFlags::all());
+        //     return RetValue::OK;
+        // }
 
         // println!("read!!!!!!!!!!!!!!!");
         // println!("status.flag() {:?}", status.flag());
@@ -350,10 +360,29 @@ impl Selector {
             Err(e) => return Err(e),
         };
 
+        if n > 0 {
+            println!("do_select n = {:?}", n);
+        }
+
+
         let statuses = event.selector.events.statuses[..n].to_vec();
         let mut ret = false;
+
+        // for status in &statuses {
+        //     println!("aaaaaaaaaaaa11111 flags = {:?}", status.flag());
+        //     println!("aaaaaaaaaaaa11111 byte = {:?}", status.bytes_transferred());
+        //     if status.overlapped() as usize == 0 {
+        //         println!("zero!!!!!!!!!");
+        //         continue;
+        //     }
+
+        //     let mut event = overlapped2arc!(status.overlapped(), Event, read);
+        //     println!("socket flags = {:?}", event.buffer.as_raw_socket());
+        //     mem::forget(event);
+        // }
+
         for status in statuses {
-            println!("aaaaaaaaaaaa11111");
+            println!("aaaaaaaaaaaa11111 flags = {:?}", status.flag());
             // This should only ever happen from the awakener, and we should
             // only ever have one awakener right now, so assert as such.
             if status.overlapped() as usize == 0 {
@@ -361,6 +390,10 @@ impl Selector {
                 ret = true;
                 continue;
             }
+
+            println!("!!!!flags = {:?}", status.flag());
+
+
 
             let callback = unsafe {
                 (*(status.overlapped() as *mut CbOverlapped)).callback
@@ -485,26 +518,28 @@ impl Selector {
 
             let read = event.read.as_mut_ptr();
             let buffer = &mut event.buffer;
-            loop {
                 let res = unsafe {
-                    buffer.socket.read_overlapped(&mut buffer.read_cache[..], read)
+                    buffer.socket.read_overlapped(&mut buffer.read_cache[..], read)?
                 };
-                println!("_do_read _____ res = {:?}", res);
-                match res {
-                    Ok(Some(n)) => {
-                        if n == 0 {
-                            break;
-                        }
-                        read_size += n;
-                        buffer.read.write(&buffer.read_cache[..n])?;
-                    }
-                    Ok(_) => {
-                        break;
-                    }
-                    Err(e) => {
-                        return Err(e);
-                    }
-                }
+            loop {
+                break;
+                // println!("_do_read _____ res = {:?}", res);
+                // match res {
+                //     Ok(Some(n)) => {
+                //         println!("read_cache = {:?}", &buffer.read_cache[..n]);
+                //         if n == 0 {
+                //             break;
+                //         }
+                //         read_size += n;
+                //         buffer.read.write(&buffer.read_cache[..n])?;
+                //     }
+                //     Ok(_) => {
+                //         break;
+                //     }
+                //     Err(e) => {
+                //         return Err(e);
+                //     }
+                // }
             }
 
             // println!("111111111111");
@@ -533,11 +568,11 @@ impl Selector {
             }
             event.buffer.is_in_read = true;
             let res = unsafe {
-                event.buffer.socket.read_overlapped(&mut [], event.read.as_mut_ptr())?
+                event.buffer.socket.read_overlapped(&mut event.buffer.read_cache[..], event.read.as_mut_ptr())?
             };
             match res {
                 Some(n) => {
-                    self.port.post_info(0, FLAG_READED, event.read.as_mut_ptr())?;
+                    // self.port.post_info(0, FLAG_READED, event.read.as_mut_ptr())?;
                 }
                 None => (),
             }
@@ -614,7 +649,7 @@ impl Selector {
                                   buffer: EventBuffer,
                                   entry: EventEntry) -> io::Result<()> {
         let socket = buffer.as_raw_socket();
-        println!("socket = {:?}", socket);
+        println!("register_socket socket = {:?}", socket);
         if self.event_maps.contains_key(&socket) {
             self.event_maps.remove(&socket);
         }
@@ -633,17 +668,31 @@ impl Selector {
         Ok(())
     }
 
-    pub fn unregister_socket(event_loop: &mut EventLoop, socket: SOCKET, _flags: EventFlags) -> io::Result<()> {
+    pub fn _unregister_socket(event_loop: &mut EventLoop, socket: SOCKET, _flags: EventFlags) -> io::Result<()> {
         println!("unregister_socket socket = {:?} ---------", socket);
         if let Some(mut ev) = event_loop.selector.event_maps.remove(&socket) {
             let event = &mut (*ev.clone().inner);
             let event_clone = &mut (*ev.inner);
             unsafe {
-                let _ = cancel(&event.buffer.socket, &event.read);
-                let _ = cancel(&event.buffer.socket, &event.write);
+                let res = cancel(&event.buffer.socket, &event.read);
+                println!("cancel res = {:?} socket = {:?}", res, event.buffer.as_raw_socket());
+                let res = cancel(&event.buffer.socket, &event.write);
+                println!("cancel res = {:?}", res);
             }
             println!("aaaaaaaaaaaaaaaaaaaaaaaaa");
             event.entry.end_cb(event_loop, &mut event_clone.buffer);
+        }
+        println!("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! {:?}", socket);
+        // panic!("!11111111111111");
+        Ok(())
+    }
+
+    pub fn unregister_socket(event_loop: &mut EventLoop, socket: SOCKET, _flags: EventFlags) -> io::Result<()> {
+        println!("unregister_socket socket = {:?} ---------", socket);
+        if let Some(ev) = event_loop.selector.event_maps.get_mut(&socket) {
+            let event = &mut (*ev.clone().inner);
+            //取消注册则关闭socket等待实际的回调结束
+            event.buffer.socket.close();
         }
         println!("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! {:?}", socket);
         // panic!("!11111111111111");

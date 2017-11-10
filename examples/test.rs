@@ -11,34 +11,34 @@ use self::psocket::TcpSocket;
 static mut S_COUNT : i32 = 0; 
 
 fn client_read_callback(_ev : &mut EventLoop, buffer: &mut EventBuffer, data : Option<&mut Box<Any>>) -> RetValue {
-    let client = any_to_mut!(data, TcpSocket);
-    // let client = data.unwrap().downcast_mut::<TcpSocket>().unwrap();
-    println!("{:?}", client);
-    let mut data : [u8; 1024] = [0; 1024];
-    let size = match client.read(&mut data[..]) {
-        Ok(len) => len,
-        Err(err) => {
-            panic!(format!("{:?}", err))
-        },
-    };
+    // let client = any_to_mut!(data, TcpSocket);
+    // // let client = data.unwrap().downcast_mut::<TcpSocket>().unwrap();
+    // println!("{:?}", client);
+    // let mut data : [u8; 1024] = [0; 1024];
+    // let size = match client.read(&mut data[..]) {
+    //     Ok(len) => len,
+    //     Err(err) => {
+    //         panic!(format!("{:?}", err))
+    //     },
+    // };
 
-    println!("size = {:?}", size);
-    if size <= 0 {
-        return RetValue::OVER;
-    }
-    let count = unsafe {
-        S_COUNT = S_COUNT + 1;
-        S_COUNT
-    };
+    // println!("size = {:?}", size);
+    // if size <= 0 {
+    //     return RetValue::OVER;
+    // }
+    // let count = unsafe {
+    //     S_COUNT = S_COUNT + 1;
+    //     S_COUNT
+    // };
 
-    if count >= 6 {
-        println!("client close the socket");
-        return RetValue::OVER;
-    } else {
-        let str = String::from_utf8_lossy(&data[0..size]);
-        println!("{:?}", str);
-        client.write(&data[0..size]).unwrap();
-    }
+    // if count >= 6 {
+    //     println!("client close the socket");
+    //     return RetValue::OVER;
+    // } else {
+    //     let str = String::from_utf8_lossy(&data[0..size]);
+    //     println!("{:?}", str);
+    //     client.write(&data[0..size]).unwrap();
+    // }
     RetValue::OK
 }
 
@@ -106,8 +106,12 @@ fn main() {
     let socket = listener.as_raw_socket();
     let buffer = event_loop.new_buff(listener);
     event_loop.add_register_socket(buffer, EventEntry::new_accept(socket, FLAG_READ | FLAG_PERSIST | FLAG_ACCEPT, Some(accept_callback), None, None));
+
+    let socket = client.as_raw_socket();
+    let buffer = event_loop.new_buff(client);
+    event_loop.add_register_socket(buffer, EventEntry::new_event(socket, FLAG_READ | FLAG_PERSIST, Some(client_read_callback), Some(end_callback), None));
     
-    event_loop.add_new_event(client.as_raw_socket(), FLAG_READ | FLAG_PERSIST, Some(client_read_callback), Some(end_callback), Some(Box::new(client)));
+    // event_loop.add_new_event(client.as_raw_socket(), FLAG_READ | FLAG_PERSIST, Some(client_read_callback), Some(end_callback), Some(Box::new(client)));
 
     // mem::forget(listener);
     // mem::forget(client);

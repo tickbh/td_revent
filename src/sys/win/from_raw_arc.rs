@@ -50,6 +50,7 @@ impl<T> FromRawArc<T> {
         // (guaranteed) then we could just use std::sync::Arc, but this is the
         // crucial reason this currently exists.
         let arc = FromRawArc { _inner: ptr as *mut Inner<T> };
+        println!("from_raw FromRawArc {:?}", (*arc._inner).cnt);
         arc.fetch_add();
         arc
     }
@@ -66,6 +67,9 @@ impl<T> Clone for FromRawArc<T> {
         // Atomic ordering of Relaxed lifted from libstd, but the general idea
         // is that you need synchronization to communicate this increment to
         // another thread, so this itself doesn't need to be synchronized.
+        unsafe {
+            println!("clone FromRawArc {:?}", (*self._inner).cnt);
+        }
         self.fetch_add();
         FromRawArc { _inner: self._inner }
     }
@@ -88,6 +92,7 @@ impl<T> DerefMut for FromRawArc<T> {
 impl<T> Drop for FromRawArc<T> {
     fn drop(&mut self) {
         unsafe {
+            println!("drop FromRawArc {:?}", (*self._inner).cnt);
             // Atomic orderings lifted from the standard library
             if (*self._inner).cnt.fetch_sub(1, Ordering::Release) != 1 {
                 return

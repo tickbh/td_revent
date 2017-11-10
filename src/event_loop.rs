@@ -103,7 +103,7 @@ impl EventLoop {
         // self.selector.do_select1(self, 0);
         let size = try!(Selector::do_select(self, 0)) as usize;
 
-        let size = try!(self.selector.select(&mut self.evts, 0)) as usize;
+        // let size = try!(self.selector.select(&mut self.evts, 0)) as usize;
         let evts : Vec<EventEntry> = self.evts.drain(..).collect();
         // for evt in evts {
         //     if let Some(mut ev) = self.event_maps.remove(&evt.ev_fd) {
