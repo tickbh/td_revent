@@ -157,11 +157,21 @@ impl EventLoop {
         // self.event_maps.insert(entry.ev_fd, entry);
     }
 
-    /// 添加定时器
-    pub fn add_register_socket(&mut self, buffer: EventBuffer, entry: EventEntry) {
-        unsafe {
-            let _ = self.selector.register_socket(buffer, entry);
-        }
+    /// 添加socket监听
+    pub fn register_socket(&mut self, buffer: EventBuffer, entry: EventEntry) -> io::Result<()> {
+        let _ = Selector::register_socket(self, buffer, entry);
+        Ok(())
+    }
+
+    /// 删除指定socket的句柄信息
+    pub fn unregister_socket(&mut self, ev_fd: SOCKET, ev_events: EventFlags) -> io::Result<()> {
+        let _ = Selector::unregister_socket(self, ev_fd, ev_events);
+        Ok(())
+    }
+
+    pub fn send_socket(&mut self, ev_fd: &SOCKET, data: &[u8]) -> io::Result<()> {
+        let _ = Selector::send_socket(self, ev_fd, data);
+        Ok(())
     }
 
     /// 添加定时器, ev_fd为socket的句柄id, ev_events为监听读, 写, 持久的信息
@@ -180,14 +190,6 @@ impl EventLoop {
                         error: Option<EndCb>,
                         data: Option<Box<Any>>) {
         self.add_event(EventEntry::new_accept(ev_fd, ev_events, accept, error, data))
-    }
-
-    /// 删除指定socket的句柄信息
-    pub fn del_event(&mut self, ev_fd: SOCKET, ev_events: EventFlags) -> Option<EventEntry> {
-        let _ = Selector::unregister_socket(self, ev_fd, ev_events);
-        // let _ = self.selector.deregister(ev_fd, ev_events);
-        None
-        // self.event_maps.remove(&ev_fd)
     }
     
     /// 定时器的处理处理

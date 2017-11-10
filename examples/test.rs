@@ -47,6 +47,9 @@ fn server_read_callback(ev : &mut EventLoop, buffer: &mut EventBuffer, data : Op
 
     println!("server_read_callback {:?}", buffer.socket);
     println!("read data {:?}", buffer.read);
+    // if buffer.read.len() > 10 {
+    //     return RetValue::OVER
+    // }
 
     // let mut data : [u8; 1024] = [0; 1024];
     // let size = match socket.read(&mut data[..]) {
@@ -62,10 +65,12 @@ fn server_read_callback(ev : &mut EventLoop, buffer: &mut EventBuffer, data : Op
     //     ev.shutdown();
     //     return RetValue::OK;
     // }
-    // let str = String::from_utf8_lossy(&data[0..size]);
-    // println!("{:?}", str);
-    // socket.write(&data[0..size]).unwrap();
-    RetValue::OVER
+    let len = buffer.read.len();
+    let data = buffer.read.drain_collect(len);
+    let val = String::from_utf8_lossy(&data[..]);
+    println!("{:?}", val);
+    ev.send_socket(&buffer.as_raw_socket(), &data[..]);
+    RetValue::OK
 }
 
 
@@ -83,7 +88,7 @@ fn accept_callback(ev : &mut EventLoop, tcp: Result<TcpSocket>, data : Option<&m
 
     let socket = new_socket.as_raw_socket();
     let buffer = ev.new_buff(new_socket);
-    ev.add_register_socket(buffer, EventEntry::new_event(socket, FLAG_READ | FLAG_PERSIST, Some(server_read_callback), Some(end_callback), None));
+    ev.register_socket(buffer, EventEntry::new_event(socket, FLAG_READ | FLAG_PERSIST, Some(server_read_callback), Some(end_callback), None));
     RetValue::OK
 }
 
@@ -105,11 +110,11 @@ fn main() {
 
     let socket = listener.as_raw_socket();
     let buffer = event_loop.new_buff(listener);
-    event_loop.add_register_socket(buffer, EventEntry::new_accept(socket, FLAG_READ | FLAG_PERSIST | FLAG_ACCEPT, Some(accept_callback), None, None));
+    event_loop.register_socket(buffer, EventEntry::new_accept(socket, FLAG_READ | FLAG_PERSIST | FLAG_ACCEPT, Some(accept_callback), None, None));
 
     let socket = client.as_raw_socket();
     let buffer = event_loop.new_buff(client);
-    event_loop.add_register_socket(buffer, EventEntry::new_event(socket, FLAG_READ | FLAG_PERSIST, Some(client_read_callback), Some(end_callback), None));
+    event_loop.register_socket(buffer, EventEntry::new_event(socket, FLAG_READ | FLAG_PERSIST, Some(client_read_callback), Some(end_callback), None));
     
     // event_loop.add_new_event(client.as_raw_socket(), FLAG_READ | FLAG_PERSIST, Some(client_read_callback), Some(end_callback), Some(Box::new(client)));
 
