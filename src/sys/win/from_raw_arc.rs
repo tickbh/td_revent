@@ -50,15 +50,28 @@ impl<T> FromRawArc<T> {
         // (guaranteed) then we could just use std::sync::Arc, but this is the
         // crucial reason this currently exists.
         let arc = FromRawArc { _inner: ptr as *mut Inner<T> };
-        println!("from_raw FromRawArc {:?}", (*arc._inner).cnt);
+        println!("from_raw FromRawArc {:?} ptr = {:?}", (*arc._inner).cnt, ptr);
         arc.fetch_add();
         arc
     }
 
-    fn fetch_add(&self) {
+    pub fn fetch_add(&self) {
         unsafe {
             (*self._inner).cnt.fetch_add(1, Ordering::Relaxed);
         }
+    }
+
+    pub fn fetch_sub(self) -> Option<FromRawArc<T>> {
+        unsafe {
+            if (*self._inner).cnt.load(Ordering::Relaxed) == 1 {
+                drop(self);
+                None
+            } else {
+                (*self._inner).cnt.fetch_sub(1, Ordering::Release);
+                Some(self)
+            }
+        }
+        
     }
 }
 
@@ -97,6 +110,8 @@ impl<T> Drop for FromRawArc<T> {
             if (*self._inner).cnt.fetch_sub(1, Ordering::Release) != 1 {
                 return
             }
+            
+            println!("do drop object!!!!!!!!!");
             atomic::fence(Ordering::Acquire);
             drop(mem::transmute::<_, Box<T>>(self._inner));
         }

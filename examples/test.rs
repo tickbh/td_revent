@@ -10,35 +10,27 @@ use self::psocket::TcpSocket;
 
 static mut S_COUNT : i32 = 0; 
 
-fn client_read_callback(_ev : &mut EventLoop, buffer: &mut EventBuffer, data : Option<&mut Box<Any>>) -> RetValue {
-    // let client = any_to_mut!(data, TcpSocket);
-    // // let client = data.unwrap().downcast_mut::<TcpSocket>().unwrap();
-    // println!("{:?}", client);
-    // let mut data : [u8; 1024] = [0; 1024];
-    // let size = match client.read(&mut data[..]) {
-    //     Ok(len) => len,
-    //     Err(err) => {
-    //         panic!(format!("{:?}", err))
-    //     },
-    // };
+fn client_read_callback(ev : &mut EventLoop, buffer: &mut EventBuffer, data : Option<&mut Box<Any>>) -> RetValue {
+    let len = buffer.read.len();
+    assert!(len > 0);
+    let data = buffer.read.drain_collect(len);
+    let val = String::from_utf8_lossy(&data[..]);
+    println!("client_read_callback = {:?}", val);
+    ev.send_socket(&buffer.as_raw_socket(), &data[..]);
 
-    // println!("size = {:?}", size);
-    // if size <= 0 {
-    //     return RetValue::OVER;
-    // }
-    // let count = unsafe {
-    //     S_COUNT = S_COUNT + 1;
-    //     S_COUNT
-    // };
+    let count = unsafe {
+        S_COUNT = S_COUNT + 1;
+        S_COUNT
+    };
 
-    // if count >= 6 {
-    //     println!("client close the socket");
-    //     return RetValue::OVER;
-    // } else {
-    //     let str = String::from_utf8_lossy(&data[0..size]);
-    //     println!("{:?}", str);
-    //     client.write(&data[0..size]).unwrap();
-    // }
+    if count >= 6 {
+        println!("client close the socket");
+        return RetValue::OVER;
+    } else {
+        let str = String::from_utf8_lossy(&data[..]);
+        println!("{:?}", str);
+        ev.send_socket(&buffer.as_raw_socket(), &data[..]);
+    }
     RetValue::OK
 }
 
@@ -68,18 +60,25 @@ fn server_read_callback(ev : &mut EventLoop, buffer: &mut EventBuffer, data : Op
     let len = buffer.read.len();
     let data = buffer.read.drain_collect(len);
     let val = String::from_utf8_lossy(&data[..]);
-    println!("{:?}", val);
+    println!("server_read_callback = {:?}", val);
     ev.send_socket(&buffer.as_raw_socket(), &data[..]);
     RetValue::OK
 }
 
 
 
-fn end_callback(ev : &mut EventLoop, buffer: &mut EventBuffer, data : Option<Box<Any>>) {
+fn server_end_callback(ev : &mut EventLoop, buffer: &mut EventBuffer, data : Option<Box<Any>>) {
     println!("end_callback!!!!!!!!!!!!!!!!!!!!! {:?}", buffer.socket);
     println!("end_callback!!!!!!!!!!! read data {:?}", buffer.read);
 
+    ev.shutdown();
 }
+
+fn client_end_callback(ev : &mut EventLoop, buffer: &mut EventBuffer, data : Option<Box<Any>>) {
+    println!("end_callback!!!!!!!!!!!!!!!!!!!!! {:?}", buffer.socket);
+    println!("end_callback!!!!!!!!!!! read data {:?}", buffer.read);
+}
+
 
 fn accept_callback(ev : &mut EventLoop, tcp: Result<TcpSocket>, data : Option<&mut Box<Any>>) -> RetValue {
     let new_socket = tcp.unwrap();
@@ -88,7 +87,7 @@ fn accept_callback(ev : &mut EventLoop, tcp: Result<TcpSocket>, data : Option<&m
 
     let socket = new_socket.as_raw_socket();
     let buffer = ev.new_buff(new_socket);
-    ev.register_socket(buffer, EventEntry::new_event(socket, FLAG_READ | FLAG_PERSIST, Some(server_read_callback), Some(end_callback), None));
+    ev.register_socket(buffer, EventEntry::new_event(socket, FLAG_READ | FLAG_PERSIST, Some(server_read_callback), Some(server_end_callback), None));
     RetValue::OK
 }
 
@@ -114,7 +113,7 @@ fn main() {
 
     let socket = client.as_raw_socket();
     let buffer = event_loop.new_buff(client);
-    event_loop.register_socket(buffer, EventEntry::new_event(socket, FLAG_READ | FLAG_PERSIST, Some(client_read_callback), Some(end_callback), None));
+    event_loop.register_socket(buffer, EventEntry::new_event(socket, FLAG_READ | FLAG_PERSIST, Some(client_read_callback), Some(client_end_callback), None));
     
     // event_loop.add_new_event(client.as_raw_socket(), FLAG_READ | FLAG_PERSIST, Some(client_read_callback), Some(end_callback), Some(Box::new(client)));
 
@@ -122,6 +121,8 @@ fn main() {
     // mem::forget(client);
     event_loop.run().unwrap();
 
-    assert!(unsafe { S_COUNT } == 6);
+    println!("count = {:?}", unsafe { S_COUNT });
+
+    assert!(unsafe { S_COUNT } >= 6);
 }
 

@@ -1,4 +1,4 @@
-use {EventEntry, EventFlags, FLAG_READ, FLAG_WRITE, FLAG_ACCEPT, FLAG_READED, EventBuffer, EventLoop, RetValue};
+use {EventEntry, EventFlags, FLAG_READ, FLAG_WRITE, FLAG_ACCEPT, FLAG_ENDED, EventBuffer, EventLoop, RetValue};
 use std::collections::HashMap;
 use std::mem;
 use psocket::SOCKET;
@@ -50,6 +50,7 @@ pub struct Event {
     pub write: CbOverlapped,
     pub accept_buf: AcceptAddrsBuf,
     pub accept_socket: TcpSocket,
+    pub is_end: bool,
 }
 
 impl Event {
@@ -226,8 +227,14 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) -> RetValue 
     } else {
         let mut bytes_transferred = status.bytes_transferred() as usize;
         println!("bytes_transferred = {:?}", bytes_transferred);
-        if bytes_transferred == 0 {
+
+        if status.flag().contains(FLAG_ENDED) {
             Selector::_unregister_socket(event_loop, event.buffer.as_raw_socket(), EventFlags::all());
+            return RetValue::OK;
+        }
+
+        if bytes_transferred == 0 {
+            Selector::unregister_socket(event_loop, event.buffer.as_raw_socket(), EventFlags::all());
             return RetValue::OK;
         }
         let mut event_clone = event.clone();
@@ -273,7 +280,7 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) -> RetValue 
         // println!("status.flag() {:?}", status.flag());
         // let mut event_clone = event.clone();
         // // 通知已读数据事件回来
-        // if status.flag().contains(FLAG_READED) {
+        // if status.flag().contains(FLAG_ENDED) {
         //     match event.entry.EventCb(event_loop, &mut event_clone.buffer) {
         //         RetValue::OVER => {
         //             event_loop.unregister_socket(event.get_event_socket(), EventFlags::all());
@@ -300,23 +307,14 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) -> RetValue 
     RetValue::OK
 }
 
-fn write_done(event: &mut EventLoop, status: &OVERLAPPED_ENTRY) -> RetValue {
-    // let status = CompletionStatus::from_entry(status);
-    // trace!("finished a write {}", status.bytes_transferred());
-    // let me2 = StreamImp {
-    //     inner: unsafe { overlapped2arc!(status.overlapped(), StreamIo, write) },
-    // };
-    // let mut me = me2.inner();
-    // let (buf, pos) = match mem::replace(&mut me.write, State::Empty) {
-    //     State::Pending(pair) => pair,
-    //     _ => unreachable!(),
-    // };
-    // let new_pos = pos + (status.bytes_transferred() as usize);
-    // if new_pos == buf.len() {
-    //     me2.add_readiness(&mut me, Ready::writable());
-    // } else {
-    //     me2.schedule_write(buf, new_pos, &mut me);
-    // }
+fn write_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) -> RetValue {
+    println!("write_done 1111111111111111");
+    let status = CompletionStatus::from_entry(status);
+    let mut event = overlapped2arc!(status.overlapped(), Event, write);
+    event.buffer.is_in_write = false;
+
+    event_loop.selector._do_write_all(&event.buffer.as_raw_socket(), None);
+
     RetValue::OK
 }
 
@@ -329,6 +327,7 @@ impl Event {
             write: CbOverlapped::new(write_done),
             accept_socket: TcpSocket::new_invalid().unwrap(),
             accept_buf: AcceptAddrsBuf::new(),
+            is_end: false,
         }
     }
 }
@@ -511,11 +510,12 @@ impl Selector {
         let mut read_size = 0;
         if let Some(event) = self.event_maps.get_mut(&socket) {
             let event = &mut (*event.inner);
-            // if event.buffer.is_in_read {
-            //     return Ok(read_size);
-            // }
+            if event.is_end {
+                return Ok(read_size);
+            }
             // event.buffer.is_in_read = true;
-
+            
+            println!("ddddddddddddddddddddddd _do_read_all read socket = {:?}", socket);
             let read = event.read.as_mut_ptr();
             let buffer = &mut event.buffer;
                 let res = unsafe {
@@ -561,25 +561,29 @@ impl Selector {
     }
 
     pub fn _do_write_all(&mut self, socket: &SOCKET, data: Option<&[u8]>) -> io::Result<()> {
-        let mut read_size = 0;
         if let Some(ev) = self.event_maps.get_mut(&socket) {
-            let event = &mut (*ev.inner);
+            let event = &mut (*ev.clone().inner);
             if data.is_some() {
                 event.buffer.write.write(data.unwrap());
             }
-            if event.buffer.is_in_write {
+            if event.buffer.is_in_write || event.buffer.write.empty() || event.is_end {
                 return Ok(());
             }
-            
-
+            // ev.inner.fetch_add();
             let write = event.write.as_mut_ptr();
             let res = unsafe {
                 event.buffer.socket.write_overlapped(&event.buffer.write.get_data()[..], write)?
             };
 
+            println!("----------------------write res = {:?}", res);
+
             match res {
                 Some(n) => {
                     event.buffer.write.drain(n);
+                    if !event.buffer.write.empty() {
+                        event.buffer.is_in_write = true;
+                    }
+                    return Ok(());
                 }
                 _ => {
                     return Ok(());
@@ -591,18 +595,21 @@ impl Selector {
     }
 
     pub fn post_read_event(&mut self, socket: SOCKET) -> io::Result<()> {
-        if let Some(event) = self.event_maps.get_mut(&socket) {
-            let event = &mut (*event.inner);
-            if event.buffer.is_in_read {
+        if let Some(ev) = self.event_maps.get_mut(&socket) {
+            let event = &mut (*ev.clone().inner);
+            if event.is_end {
                 return Ok(());
             }
-            event.buffer.is_in_read = true;
+            // ev.inner.fetch_add();
+            // event.buffer.is_in_read = true;
             let res = unsafe {
+                
+            println!("ddddddddddddddddddddddd post_read_event read socket = {:?}", socket);
                 event.buffer.socket.read_overlapped(&mut event.buffer.read_cache[..], event.read.as_mut_ptr())?
             };
             match res {
                 Some(n) => {
-                    // self.port.post_info(0, FLAG_READED, event.read.as_mut_ptr())?;
+                    // self.port.post_info(0, FLAG_ENDED, event.read.as_mut_ptr())?;
                 }
                 None => (),
             }
@@ -615,38 +622,13 @@ impl Selector {
         //         let event = &mut (*event.inner);
         //         event.read.as_mut_ptr()
         //     };
-        //     self.port.post_info(0, FLAG_READED, overlap)?;
+        //     self.port.post_info(0, FLAG_ENDED, overlap)?;
         // }
         Ok(())
     }
 
     pub fn post_write_event(&mut self, socket: SOCKET) -> io::Result<()> {
-        if let Some(event) = self.event_maps.get_mut(&socket) {
-            let event = &mut (*event.inner);
-            if event.buffer.is_in_write || event.buffer.write.empty() {
-                return Ok(());
-            }
-            event.buffer.is_in_write = true;
-            let ret = unsafe {
-                event.buffer.socket.write_overlapped(&event.buffer.write.get_data()[..], event.write.as_mut_ptr())
-            };
-            match ret {
-                Ok(Some(transferred_bytes)) => {
-                    event.buffer.write.drain(transferred_bytes);
-                }
-                Ok(_) => {
-
-                }
-                Err(e) => {
-                    // trace!("write error: {}", e);
-                    // me.write = State::Error(e);
-                    // self.add_readiness(me, Ready::writable());
-                    // me.iocp.put_buffer(buf);
-                    // break;
-                }
-            }
-        }
-        Ok(())
+        self._do_write_all(&socket, None)
     }
 
     pub fn check_socket_event(&mut self, socket: SOCKET) -> io::Result<()> {
@@ -700,12 +682,6 @@ impl Selector {
         if let Some(mut ev) = event_loop.selector.event_maps.remove(&socket) {
             let event = &mut (*ev.clone().inner);
             let event_clone = &mut (*ev.inner);
-            // unsafe {
-            //     let res = cancel(&event.buffer.socket, &event.read);
-            //     println!("cancel res = {:?} socket = {:?}", res, event.buffer.as_raw_socket());
-            //     let res = cancel(&event.buffer.socket, &event.write);
-            //     println!("cancel res = {:?}", res);
-            // }
             println!("aaaaaaaaaaaaaaaaaaaaaaaaa");
             event.entry.end_cb(event_loop, &mut event_clone.buffer);
         }
@@ -716,18 +692,43 @@ impl Selector {
 
     pub fn unregister_socket(event_loop: &mut EventLoop, socket: SOCKET, _flags: EventFlags) -> io::Result<()> {
         println!("unregister_socket socket = {:?} ---------", socket);
-        if let Some(ev) = event_loop.selector.event_maps.get_mut(&socket) {
-            let event = &mut (*ev.clone().inner);
-            //取消注册则关闭socket等待实际的回调结束
-            event.buffer.socket.close();
-        }
+        event_loop.selector._notify_socket_end(&socket);
+        // if event_loop.selector.event_maps.contains_key(&socket) {
+        //     event_loop.selector._notify_socket_end(&socket);
+        //     //取消注册则关闭socket等待实际的回调结束
+        //     // event.buffer.socket.close();
+        //     // let event = &mut (*ev.clone().inner);
+        //     // let event_clone = &mut (*ev.inner);
+        //     // println!("aaaaaaaaaaaaaaaaaaaaaaaaa");
+        //     // event.entry.end_cb(event_loop, &mut event_clone.buffer);
+        // }
         println!("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! {:?}", socket);
         // panic!("!11111111111111");
         Ok(())
     }
 
+    fn _notify_socket_end(&mut self, socket: &SOCKET) -> io::Result<()> {
+        if let Some(ev) = self.event_maps.get_mut(&socket) {
+            let event = &mut (*ev.clone().inner);
+            if event.is_end {
+                return Ok(());
+            }
+            println!("ddddddddddddddddddddddd _notify_socket_end socket = {:?}", socket);
+            event.is_end = true;
+            self.port.post_info(0, FLAG_ENDED, event.read.as_mut_ptr())?;
+            //取消注册则关闭socket等待实际的回调结束
+            // event.buffer.socket.close();
+            // let event = &mut (*ev.clone().inner);
+            // let event_clone = &mut (*ev.inner);
+            // println!("aaaaaaaaaaaaaaaaaaaaaaaaa");
+            // event.entry.end_cb(event_loop, &mut event_clone.buffer);
+        }
+        Ok(())
+        // self.port.post_info(0, FLAG_ENDED, event.read.as_mut_ptr())?;
+    }
+
     pub fn send_socket(event_loop: &mut EventLoop, socket: &SOCKET, data: &[u8]) -> io::Result<()> {
-        println!("unregister_socket socket = {:?} ---------", socket);
+        println!("send_socket socket = {:?} ---------", socket);
         event_loop.selector._do_write_all(socket, Some(data))
     }
 
