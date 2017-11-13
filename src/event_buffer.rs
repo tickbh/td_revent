@@ -124,9 +124,6 @@ pub struct EventBuffer {
     pub write: Buffer,
     pub socket: TcpSocket,
     pub read_cache: Vec<u8>,
-    pub read_bytes: DWORD,
-    pub write_cache: Vec<u8>,
-    pub is_in_read: bool,
     pub is_in_write: bool,
     pub error: Result<()>,
 }
@@ -139,13 +136,8 @@ impl EventBuffer {
             write: Buffer::new(),
             socket: socket,
             read_cache: vec![0; capacity],
-            write_cache: Vec::with_capacity(capacity),
-            read_bytes: 0,
-            is_in_read: false,
             is_in_write: false,
             error: Ok(()), 
-            // accept_buf: AcceptAddrsBuf::new(),
-            // accept_socket: TcpSocket::new_invalid(),
         }
     }
 
