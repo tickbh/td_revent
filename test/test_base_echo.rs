@@ -7,18 +7,21 @@ use std::io::prelude::*;
 use std::any::Any;
 use self::psocket::TcpSocket;
 
-static mut S_COUNT : i32 = 0; 
+static mut S_COUNT: i32 = 0;
 
-fn client_read_callback(_ev : &mut EventLoop, _fd : i32, _ : EventFlags, data : Option<&mut Box<Any>>) -> RetValue {
+fn client_read_callback(
+    _ev: &mut EventLoop,
+    _fd: i32,
+    _: EventFlags,
+    data: Option<&mut Box<Any>>,
+) -> RetValue {
     let client = any_to_mut!(data, TcpSocket);
     // let client = data.unwrap().downcast_mut::<TcpSocket>().unwrap();
     println!("{:?}", client);
-    let mut data : [u8; 1024] = [0; 1024];
+    let mut data: [u8; 1024] = [0; 1024];
     let size = match client.read(&mut data[..]) {
         Ok(len) => len,
-        Err(err) => {
-            panic!(format!("{:?}", err))
-        },
+        Err(err) => panic!(format!("{:?}", err)),
     };
 
     println!("size = {:?}", size);
@@ -41,20 +44,23 @@ fn client_read_callback(_ev : &mut EventLoop, _fd : i32, _ : EventFlags, data : 
     RetValue::OK
 }
 
-fn server_read_callback(ev : &mut EventLoop, _fd : i32, _ : EventFlags, data : Option<&mut Box<Any>>) -> RetValue {
+fn server_read_callback(
+    ev: &mut EventLoop,
+    _fd: i32,
+    _: EventFlags,
+    data: Option<&mut Box<Any>>,
+) -> RetValue {
     let socket = any_to_mut!(data, TcpSocket);
 
     println!("{:?}", socket);
 
-    let mut data : [u8; 1024] = [0; 1024];
+    let mut data: [u8; 1024] = [0; 1024];
     let size = match socket.read(&mut data[..]) {
         Ok(len) => len,
-        Err(err) => {
-            panic!(format!("{:?}", err))
-        },
+        Err(err) => panic!(format!("{:?}", err)),
     };
     println!("size = {:?}", size);
-    
+
 
     if size <= 0 {
         ev.shutdown();
@@ -66,14 +72,24 @@ fn server_read_callback(ev : &mut EventLoop, _fd : i32, _ : EventFlags, data : O
     RetValue::OK
 }
 
-fn accept_callback(ev : &mut EventLoop, _fd : i32, _ : EventFlags, data : Option<&mut Box<Any>>) -> RetValue {
+fn accept_callback(
+    ev: &mut EventLoop,
+    _fd: i32,
+    _: EventFlags,
+    data: Option<&mut Box<Any>>,
+) -> RetValue {
     let listener = any_to_mut!(data, TcpSocket);
 
     let (mut new_socket, new_attr) = listener.accept().unwrap();
     let _ = new_socket.set_nonblocking(true);
 
     println!("{:?} attr is {:?}", new_socket, new_attr);
-    ev.add_new_event(new_socket.get_socket_fd(), FLAG_READ | FLAG_PERSIST, Some(server_read_callback), Some(Box::new(new_socket)));
+    ev.add_new_event(
+        new_socket.get_socket_fd(),
+        FLAG_READ | FLAG_PERSIST,
+        Some(server_read_callback),
+        Some(Box::new(new_socket)),
+    );
     RetValue::OK
 }
 
@@ -92,8 +108,18 @@ pub fn test_base_echo() {
     client.write(b"hello world").unwrap();
 
     // let mut sock_mgr = SocketManger { listener : listener, client : client };
-    event_loop.add_new_event(listener.get_socket_fd(), FLAG_READ | FLAG_PERSIST, Some(accept_callback), Some(Box::new(listener)));
-    event_loop.add_new_event(client.get_socket_fd(), FLAG_READ | FLAG_PERSIST, Some(client_read_callback), Some(Box::new(client)));
+    event_loop.add_new_event(
+        listener.get_socket_fd(),
+        FLAG_READ | FLAG_PERSIST,
+        Some(accept_callback),
+        Some(Box::new(listener)),
+    );
+    event_loop.add_new_event(
+        client.get_socket_fd(),
+        FLAG_READ | FLAG_PERSIST,
+        Some(client_read_callback),
+        Some(Box::new(client)),
+    );
 
     // mem::forget(listener);
     // mem::forget(client);
@@ -101,4 +127,3 @@ pub fn test_base_echo() {
 
     assert!(unsafe { S_COUNT } == 6);
 }
-

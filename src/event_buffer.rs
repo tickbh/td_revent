@@ -81,11 +81,7 @@ impl Read for Buffer {
         if left == 0 || buf.len() == 0 {
             return Ok(0);
         }
-        let read = if left > buf.len() {
-            buf.len()
-        } else {
-            left
-        };
+        let read = if left > buf.len() { buf.len() } else { left };
         unsafe {
             ptr::copy(&self.val[self.rpos], &mut buf[0], read);
         }
@@ -96,7 +92,11 @@ impl Read for Buffer {
 
 impl Write for Buffer {
     fn write(&mut self, buf: &[u8]) -> Result<usize> {
-        println!("self val len = {:?} self.wpos = {:?}", self.val.len(), self.wpos);
+        println!(
+            "self val len = {:?} self.wpos = {:?}",
+            self.val.len(),
+            self.wpos
+        );
         println!("buf.len() = {:?}", buf.len());
         if self.val.len() < self.wpos + buf.len() {
             println!("fffffff");
@@ -143,7 +143,7 @@ impl EventBuffer {
             read_bytes: 0,
             is_in_read: false,
             is_in_write: false,
-            error: Ok(()),
+            error: Ok(()), 
             // accept_buf: AcceptAddrsBuf::new(),
             // accept_socket: TcpSocket::new_invalid(),
         }

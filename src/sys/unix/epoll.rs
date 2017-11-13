@@ -35,7 +35,9 @@ impl Selector {
         };
 
         // Wait for epoll events for at most timeout_ms milliseconds
-        let cnt = try!(epoll_wait(self.epfd, dst, timeout_ms).map_err(super::from_nix_error));
+        let cnt = try!(epoll_wait(self.epfd, dst, timeout_ms).map_err(
+            super::from_nix_error,
+        ));
 
         unsafe {
             self.evts.events.set_len(cnt);
@@ -63,7 +65,8 @@ impl Selector {
             data: fd as u64,
         };
 
-        epoll_ctl(self.epfd, EpollOp::EpollCtlAdd, fd as RawFd, &info).map_err(super::from_nix_error)
+        epoll_ctl(self.epfd, EpollOp::EpollCtlAdd, fd as RawFd, &info)
+            .map_err(super::from_nix_error)
     }
 
     pub fn deregister(&mut self, fd: i32, ev_events: EventFlags) -> io::Result<()> {
@@ -72,7 +75,8 @@ impl Selector {
             data: 0,
         };
 
-        epoll_ctl(self.epfd, EpollOp::EpollCtlDel, fd as RawFd, &info).map_err(super::from_nix_error)
+        epoll_ctl(self.epfd, EpollOp::EpollCtlDel, fd as RawFd, &info)
+            .map_err(super::from_nix_error)
     }
 }
 

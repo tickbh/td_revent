@@ -104,7 +104,7 @@ impl EventLoop {
         let size = try!(Selector::do_select(self, 0)) as usize;
 
         // let size = try!(self.selector.select(&mut self.evts, 0)) as usize;
-        let evts : Vec<EventEntry> = self.evts.drain(..).collect();
+        let evts: Vec<EventEntry> = self.evts.drain(..).collect();
         // for evt in evts {
         //     if let Some(mut ev) = self.event_maps.remove(&evt.ev_fd) {
         //         let is_over = match ev.callback(self, evt.ev_events) {
@@ -139,11 +139,19 @@ impl EventLoop {
     /// 添加定时器,  tick_step变量表示每隔多少ms调用一次该回调
     /// tick_repeat变量表示该定时器是否重复, 如果为true, 则会每tick_step ms进行调用一次, 直到回调返回RetValue::OVER, 或者被主动删除该定时器
     /// 添加定时器, 如果time_step为0,则添加定时器失败
-    pub fn add_new_timer(&mut self, tick_step: u64,
-                     tick_repeat: bool,
-                     timer_cb: Option<TimerCb>,
-                     data: Option<Box<Any>>) -> u32 {
-        self.timer.add_timer(EventEntry::new_timer(tick_step, tick_repeat, timer_cb, data))
+    pub fn add_new_timer(
+        &mut self,
+        tick_step: u64,
+        tick_repeat: bool,
+        timer_cb: Option<TimerCb>,
+        data: Option<Box<Any>>,
+    ) -> u32 {
+        self.timer.add_timer(EventEntry::new_timer(
+            tick_step,
+            tick_repeat,
+            timer_cb,
+            data,
+        ))
     }
 
     /// 删除指定的定时器id, 定时器内部实现细节为红黑树, 删除定时器的时间为O(logn), 如果存在该定时器, 则返回相关的定时器信息
@@ -153,7 +161,7 @@ impl EventLoop {
 
     /// 添加定时器
     pub fn add_event(&mut self, entry: EventEntry) {
-        let _ = self.selector.register(entry.ev_fd, entry.ev_events);
+        // let _ = self.selector.register(entry.ev_fd, entry.ev_events);
         // self.event_maps.insert(entry.ev_fd, entry);
     }
 
@@ -175,23 +183,35 @@ impl EventLoop {
     }
 
     /// 添加定时器, ev_fd为socket的句柄id, ev_events为监听读, 写, 持久的信息
-    pub fn add_new_event(&mut self, ev_fd: SOCKET,
-                        ev_events: EventFlags,
-                        event: Option<EventCb>,
-                        error: Option<EndCb>,
-                        data: Option<Box<Any>>) {
+    pub fn add_new_event(
+        &mut self,
+        ev_fd: SOCKET,
+        ev_events: EventFlags,
+        event: Option<EventCb>,
+        error: Option<EndCb>,
+        data: Option<Box<Any>>,
+    ) {
         self.add_event(EventEntry::new_event(ev_fd, ev_events, event, error, data))
     }
 
     /// 添加定时器, ev_fd为socket的句柄id, ev_events为监听读, 写, 持久的信息
-    pub fn add_new_accept(&mut self, ev_fd: SOCKET,
-                        ev_events: EventFlags,
-                        accept: Option<AcceptCb>,
-                        error: Option<EndCb>,
-                        data: Option<Box<Any>>) {
-        self.add_event(EventEntry::new_accept(ev_fd, ev_events, accept, error, data))
+    pub fn add_new_accept(
+        &mut self,
+        ev_fd: SOCKET,
+        ev_events: EventFlags,
+        accept: Option<AcceptCb>,
+        error: Option<EndCb>,
+        data: Option<Box<Any>>,
+    ) {
+        self.add_event(EventEntry::new_accept(
+            ev_fd,
+            ev_events,
+            accept,
+            error,
+            data,
+        ))
     }
-    
+
     /// 定时器的处理处理
     /// 1.取出定时器的第一个, 如果第一个大于当前时间, 则跳出循环, 如果小于等于当前时间进入2
     /// 2.调用回调函数, 如果回调返回OVER或者定时器不是循环定时器, 则删除定时器, 否则把该定时器重时添加到列表

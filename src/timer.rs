@@ -58,7 +58,10 @@ impl Timer {
         let time_id = entry.time_id;
         entry.tick_ms = self.now() + entry.tick_step;
         self.time_maps.insert(time_id, entry.tick_ms);
-        self.timer_queue.insert(TreeKey(entry.tick_ms, time_id), entry);
+        self.timer_queue.insert(
+            TreeKey(entry.tick_ms, time_id),
+            entry,
+        );
         time_id
     }
 

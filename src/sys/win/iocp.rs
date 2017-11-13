@@ -6,7 +6,7 @@ use std::mem;
 use std::os::windows::io::*;
 use std::time::Duration;
 
-use {EventFlags};
+use EventFlags;
 use psocket::TcpSocket;
 
 use super::handle::Handle;
@@ -38,10 +38,7 @@ impl CompletionPort {
     /// allowed for threads associated with this port. Consult the Windows
     /// documentation for more information about this value.
     pub fn new(threads: u32) -> io::Result<CompletionPort> {
-        let ret = unsafe {
-            CreateIoCompletionPort(INVALID_HANDLE_VALUE, 0 as *mut _,
-                                   0, threads)
-        };
+        let ret = unsafe { CreateIoCompletionPort(INVALID_HANDLE_VALUE, 0 as *mut _, 0, threads) };
         if ret.is_null() {
             Err(io::Error::last_os_error())
         } else {
@@ -58,8 +55,7 @@ impl CompletionPort {
     /// Any object which is convertible to a `HANDLE` via the `AsRawHandle`
     /// trait can be provided to this function, such as `std::fs::File` and
     /// friends.
-    pub fn add_handle<T: AsRawHandle + ?Sized>(&self, flag: EventFlags,
-                                               t: &T) -> io::Result<()> {
+    pub fn add_handle<T: AsRawHandle + ?Sized>(&self, flag: EventFlags, t: &T) -> io::Result<()> {
         self._add(flag, t.as_raw_handle())
     }
 
@@ -79,8 +75,7 @@ impl CompletionPort {
     fn _add(&self, flag: EventFlags, handle: HANDLE) -> io::Result<()> {
         assert_eq!(mem::size_of_val(&flag), mem::size_of::<ULONG_PTR>());
         let ret = unsafe {
-            CreateIoCompletionPort(handle, self.handle.raw(),
-                                   flag.bits() as ULONG_PTR, 0)
+            CreateIoCompletionPort(handle, self.handle.raw(), flag.bits() as ULONG_PTR, 0)
         };
         if ret.is_null() {
             Err(io::Error::last_os_error())
@@ -109,11 +104,13 @@ impl CompletionPort {
         let mut overlapped = 0 as *mut _;
         let timeout = super::dur2ms(timeout);
         let ret = unsafe {
-            GetQueuedCompletionStatus(self.handle.raw(),
-                                      &mut bytes,
-                                      &mut token,
-                                      &mut overlapped,
-                                      timeout)
+            GetQueuedCompletionStatus(
+                self.handle.raw(),
+                &mut bytes,
+                &mut token,
+                &mut overlapped,
+                timeout,
+            )
         };
         super::cvt(ret).map(|_| {
             CompletionStatus(OVERLAPPED_ENTRY {
@@ -134,23 +131,27 @@ impl CompletionPort {
     /// function does not wait to fill up the entire list of statuses provided.
     ///
     /// Like with `get`, a timeout may be specified for this operation.
-    pub fn get_many<'a>(&self,
-                        list: &'a mut [CompletionStatus],
-                        timeout: Option<Duration>)
-                        -> io::Result<&'a mut [CompletionStatus]>
-    {
-        debug_assert_eq!(mem::size_of::<CompletionStatus>(),
-                         mem::size_of::<OVERLAPPED_ENTRY>());
+    pub fn get_many<'a>(
+        &self,
+        list: &'a mut [CompletionStatus],
+        timeout: Option<Duration>,
+    ) -> io::Result<&'a mut [CompletionStatus]> {
+        debug_assert_eq!(
+            mem::size_of::<CompletionStatus>(),
+            mem::size_of::<OVERLAPPED_ENTRY>()
+        );
         let mut removed = 0;
         let timeout = super::dur2ms(timeout);
         let len = cmp::min(list.len(), <ULONG>::max_value() as usize) as ULONG;
         let ret = unsafe {
-            GetQueuedCompletionStatusEx(self.handle.raw(),
-                                        list.as_ptr() as *mut _,
-                                        len,
-                                        &mut removed,
-                                        timeout,
-                                        FALSE)
+            GetQueuedCompletionStatusEx(
+                self.handle.raw(),
+                list.as_ptr() as *mut _,
+                len,
+                &mut removed,
+                timeout,
+                FALSE,
+            )
         };
         match super::cvt(ret) {
             Ok(_) => Ok(&mut list[..removed as usize]),
@@ -165,20 +166,29 @@ impl CompletionPort {
     /// this status.
     pub fn post(&self, status: CompletionStatus) -> io::Result<()> {
         let ret = unsafe {
-            PostQueuedCompletionStatus(self.handle.raw(),
-                                       status.0.dwNumberOfBytesTransferred,
-                                       status.0.lpCompletionKey,
-                                       status.0.lpOverlapped)
+            PostQueuedCompletionStatus(
+                self.handle.raw(),
+                status.0.dwNumberOfBytesTransferred,
+                status.0.lpCompletionKey,
+                status.0.lpOverlapped,
+            )
         };
         super::cvt(ret).map(|_| ())
     }
 
-    pub fn post_info(&self, bytes: u32, flag: EventFlags, overlapped: *mut OVERLAPPED) -> io::Result<()> {
+    pub fn post_info(
+        &self,
+        bytes: u32,
+        flag: EventFlags,
+        overlapped: *mut OVERLAPPED,
+    ) -> io::Result<()> {
         let ret = unsafe {
-            PostQueuedCompletionStatus(self.handle.raw(),
-                                       bytes,
-                                       flag.bits() as ULONG_PTR,
-                                       overlapped)
+            PostQueuedCompletionStatus(
+                self.handle.raw(),
+                bytes,
+                flag.bits() as ULONG_PTR,
+                overlapped,
+            )
         };
         super::cvt(ret).map(|_| ())
     }
@@ -208,8 +218,7 @@ impl CompletionStatus {
     /// This function is useful when creating a status to send to a port with
     /// the `post` method. The parameters are opaquely passed through and not
     /// interpreted by the system at all.
-    pub fn new(bytes: u32, flag: EventFlags, overlapped: *mut Overlapped)
-               -> CompletionStatus {
+    pub fn new(bytes: u32, flag: EventFlags, overlapped: *mut Overlapped) -> CompletionStatus {
         assert_eq!(mem::size_of_val(&flag), mem::size_of::<ULONG_PTR>());
         CompletionStatus(OVERLAPPED_ENTRY {
             dwNumberOfBytesTransferred: bytes,

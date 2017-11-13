@@ -27,8 +27,8 @@ pub struct FromRawArc<T> {
     _inner: *mut Inner<T>,
 }
 
-unsafe impl<T: Sync + Send> Send for FromRawArc<T> { }
-unsafe impl<T: Sync + Send> Sync for FromRawArc<T> { }
+unsafe impl<T: Sync + Send> Send for FromRawArc<T> {}
+unsafe impl<T: Sync + Send> Sync for FromRawArc<T> {}
 
 #[repr(C)]
 struct Inner<T> {
@@ -50,7 +50,11 @@ impl<T> FromRawArc<T> {
         // (guaranteed) then we could just use std::sync::Arc, but this is the
         // crucial reason this currently exists.
         let arc = FromRawArc { _inner: ptr as *mut Inner<T> };
-        println!("from_raw FromRawArc {:?} ptr = {:?}", (*arc._inner).cnt, ptr);
+        println!(
+            "from_raw FromRawArc {:?} ptr = {:?}",
+            (*arc._inner).cnt,
+            ptr
+        );
         arc.fetch_add();
         arc
     }
@@ -71,7 +75,7 @@ impl<T> FromRawArc<T> {
                 Some(self)
             }
         }
-        
+
     }
 }
 
@@ -108,9 +112,9 @@ impl<T> Drop for FromRawArc<T> {
             println!("drop FromRawArc {:?}", (*self._inner).cnt);
             // Atomic orderings lifted from the standard library
             if (*self._inner).cnt.fetch_sub(1, Ordering::Release) != 1 {
-                return
+                return;
             }
-            
+
             println!("do drop object!!!!!!!!!");
             atomic::fence(Ordering::Acquire);
             drop(mem::transmute::<_, Box<T>>(self._inner));

@@ -11,7 +11,7 @@ use {EventEntry, EventFlags, FLAG_READ, FLAG_WRITE};
 #[derive(Debug)]
 pub struct Selector {
     kq: RawFd,
-    evts: Events
+    evts: Events,
 }
 
 impl Selector {
@@ -20,12 +20,12 @@ impl Selector {
 
         Ok(Selector {
             kq: kq,
-            evts: Events::new()
+            evts: Events::new(),
         })
     }
 
     pub fn select(&mut self, evts: &mut Vec<EventEntry>, timeout_ms: u32) -> io::Result<u32> {
-        use std::{isize};
+        use std::isize;
 
         let timeout_ms = if timeout_ms as isize >= isize::MAX {
             isize::MAX
@@ -35,11 +35,13 @@ impl Selector {
 
         let timeout = timespec {
             tv_sec: (timeout_ms / 1000) as time_t,
-            tv_nsec: ((timeout_ms % 1000) * 1_000_000) as c_long
+            tv_nsec: ((timeout_ms % 1000) * 1_000_000) as c_long,
         };
 
-        let cnt = try!(kevent_ts(self.kq, &[], self.evts.as_mut_slice(), Some(timeout))
-                                  .map_err(super::from_nix_error));
+        let cnt = try!(
+            kevent_ts(self.kq, &[], self.evts.as_mut_slice(), Some(timeout))
+                .map_err(super::from_nix_error)
+        );
         unsafe {
             self.evts.sys_events.set_len(cnt);
         }
@@ -62,8 +64,16 @@ impl Selector {
 
     pub fn register(&mut self, fd: i32, ev_events: EventFlags) -> io::Result<()> {
 
-        self.ev_register(fd as RawFd, EventFilter::EVFILT_READ, ev_events.contains(FLAG_READ));
-        self.ev_register(fd as RawFd, EventFilter::EVFILT_WRITE, ev_events.contains(FLAG_WRITE));
+        self.ev_register(
+            fd as RawFd,
+            EventFilter::EVFILT_READ,
+            ev_events.contains(FLAG_READ),
+        );
+        self.ev_register(
+            fd as RawFd,
+            EventFilter::EVFILT_WRITE,
+            ev_events.contains(FLAG_WRITE),
+        );
 
         self.flush_changes()
     }
@@ -75,7 +85,7 @@ impl Selector {
     }
 
 
-    fn ev_register(&mut self, fd: RawFd, filter: EventFilter, enable : bool) {
+    fn ev_register(&mut self, fd: RawFd, filter: EventFilter, enable: bool) {
         let mut flags = EV_ADD;
         if enable {
             flags = flags | EV_ENABLE;
@@ -87,20 +97,21 @@ impl Selector {
     }
 
     fn ev_push(&mut self, fd: RawFd, filter: EventFilter, flags: EventFlag) {
-        self.evts.sys_events.push(
-            KEvent {
-                ident: fd as ::libc::uintptr_t,
-                filter: filter,
-                flags: flags,
-                fflags: FilterFlag::empty(),
-                data: 0,
-                udata: 0
-            });
+        self.evts.sys_events.push(KEvent {
+            ident: fd as ::libc::uintptr_t,
+            filter: filter,
+            flags: flags,
+            fflags: FilterFlag::empty(),
+            data: 0,
+            udata: 0,
+        });
     }
 
     fn flush_changes(&mut self) -> io::Result<()> {
-        let result = kevent(self.kq, self.evts.as_slice(), &mut [], 0).map(|_| ())
-            .map_err(super::from_nix_error).map(|_| ());
+        let result = kevent(self.kq, self.evts.as_slice(), &mut [], 0)
+            .map(|_| ())
+            .map_err(super::from_nix_error)
+            .map(|_| ());
 
         self.evts.sys_events.clear();
         result
@@ -119,9 +130,7 @@ pub struct Events {
 
 impl Events {
     pub fn new() -> Events {
-        Events {
-            sys_events: Vec::with_capacity(1024),
-        }
+        Events { sys_events: Vec::with_capacity(1024) }
     }
 
     fn as_slice(&self) -> &[KEvent] {

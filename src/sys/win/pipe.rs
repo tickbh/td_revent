@@ -52,14 +52,20 @@ pub fn anonymous(buffer_size: u32) -> io::Result<(AnonRead, AnonWrite)> {
 }
 
 impl Read for AnonRead {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> { self.0.read(buf) }
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.0.read(buf)
+    }
 }
 impl<'a> Read for &'a AnonRead {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> { self.0.read(buf) }
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.0.read(buf)
+    }
 }
 
 impl AsRawHandle for AnonRead {
-    fn as_raw_handle(&self) -> HANDLE { self.0.raw() }
+    fn as_raw_handle(&self) -> HANDLE {
+        self.0.raw()
+    }
 }
 impl FromRawHandle for AnonRead {
     unsafe fn from_raw_handle(handle: HANDLE) -> AnonRead {
@@ -67,20 +73,32 @@ impl FromRawHandle for AnonRead {
     }
 }
 impl IntoRawHandle for AnonRead {
-    fn into_raw_handle(self) -> HANDLE { self.0.into_raw() }
+    fn into_raw_handle(self) -> HANDLE {
+        self.0.into_raw()
+    }
 }
 
 impl Write for AnonWrite {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> { self.0.write(buf) }
-    fn flush(&mut self) -> io::Result<()> { Ok(()) }
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 impl<'a> Write for &'a AnonWrite {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> { self.0.write(buf) }
-    fn flush(&mut self) -> io::Result<()> { Ok(()) }
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 impl AsRawHandle for AnonWrite {
-    fn as_raw_handle(&self) -> HANDLE { self.0.raw() }
+    fn as_raw_handle(&self) -> HANDLE {
+        self.0.raw()
+    }
 }
 impl FromRawHandle for AnonWrite {
     unsafe fn from_raw_handle(handle: HANDLE) -> AnonWrite {
@@ -88,7 +106,9 @@ impl FromRawHandle for AnonWrite {
     }
 }
 impl IntoRawHandle for AnonWrite {
-    fn into_raw_handle(self) -> HANDLE { self.0.into_raw() }
+    fn into_raw_handle(self) -> HANDLE {
+        self.0.into_raw()
+    }
 }
 
 /// A convenience function to connect to a named pipe.
@@ -108,12 +128,12 @@ fn _connect(addr: &OsStr) -> io::Result<File> {
     w.write(true);
     rw.read(true).write(true);
     loop {
-        let res = rw.open(addr).or_else(|_| r.open(addr))
-                               .or_else(|_| w.open(addr));
+        let res = rw.open(addr).or_else(|_| r.open(addr)).or_else(
+            |_| w.open(addr),
+        );
         match res {
             Ok(f) => return Ok(f),
-            Err(ref e) if e.raw_os_error() == Some(ERROR_PIPE_BUSY as i32)
-                => {}
+            Err(ref e) if e.raw_os_error() == Some(ERROR_PIPE_BUSY as i32) => {}
             Err(e) => return Err(e),
         }
 
@@ -147,17 +167,14 @@ impl NamedPipe {
     ///
     /// If this function succeeds the process can create a `File` to connect to
     /// the named pipe.
-    pub fn wait<A: AsRef<OsStr>>(addr: A, timeout: Option<Duration>)
-                                 -> io::Result<()> {
+    pub fn wait<A: AsRef<OsStr>>(addr: A, timeout: Option<Duration>) -> io::Result<()> {
         NamedPipe::_wait(addr.as_ref(), timeout)
     }
 
     fn _wait(addr: &OsStr, timeout: Option<Duration>) -> io::Result<()> {
         let addr = addr.encode_wide().chain(Some(0)).collect::<Vec<_>>();
         let timeout = super::dur2ms(timeout);
-        super::cvt(unsafe {
-            WaitNamedPipeW(addr.as_ptr(), timeout)
-        }).map(|_| ())
+        super::cvt(unsafe { WaitNamedPipeW(addr.as_ptr(), timeout) }).map(|_| ())
     }
 
     /// Connects this named pipe to a client, blocking until one becomes
@@ -169,8 +186,7 @@ impl NamedPipe {
     pub fn connect(&self) -> io::Result<()> {
         match super::cvt(unsafe { ConnectNamedPipe(self.0.raw(), 0 as *mut _) }) {
             Ok(_) => Ok(()),
-            Err(ref e) if e.raw_os_error() == Some(ERROR_PIPE_CONNECTED as i32)
-                => Ok(()),
+            Err(ref e) if e.raw_os_error() == Some(ERROR_PIPE_CONNECTED as i32) => Ok(()),
             Err(e) => Err(e),
         }
     }
@@ -194,23 +210,18 @@ impl NamedPipe {
     /// To safely use this function callers must ensure that this pointer is
     /// valid until the I/O operation is completed, typically via completion
     /// ports and waiting to receive the completion notification on the port.
-    pub unsafe fn connect_overlapped(&self, overlapped: *mut OVERLAPPED)
-                                     -> io::Result<bool> {
+    pub unsafe fn connect_overlapped(&self, overlapped: *mut OVERLAPPED) -> io::Result<bool> {
         match super::cvt(ConnectNamedPipe(self.0.raw(), overlapped)) {
             Ok(_) => Ok(true),
-            Err(ref e) if e.raw_os_error() == Some(ERROR_PIPE_CONNECTED as i32)
-                => Ok(true),
-            Err(ref e) if e.raw_os_error() == Some(ERROR_IO_PENDING as i32)
-                => Ok(false),
+            Err(ref e) if e.raw_os_error() == Some(ERROR_PIPE_CONNECTED as i32) => Ok(true),
+            Err(ref e) if e.raw_os_error() == Some(ERROR_IO_PENDING as i32) => Ok(false),
             Err(e) => Err(e),
         }
     }
 
     /// Disconnects this named pipe from any connected client.
     pub fn disconnect(&self) -> io::Result<()> {
-        super::cvt(unsafe {
-            DisconnectNamedPipe(self.0.raw())
-        }).map(|_| ())
+        super::cvt(unsafe { DisconnectNamedPipe(self.0.raw()) }).map(|_| ())
     }
 
     /// Issues an overlapped read operation to occur on this pipe.
@@ -239,10 +250,11 @@ impl NamedPipe {
     /// To safely use this function callers must ensure that the pointers are
     /// valid until the I/O operation is completed, typically via completion
     /// ports and waiting to receive the completion notification on the port.
-    pub unsafe fn read_overlapped(&self,
-                                  buf: &mut [u8],
-                                  overlapped: *mut OVERLAPPED)
-                                  -> io::Result<Option<usize>> {
+    pub unsafe fn read_overlapped(
+        &self,
+        buf: &mut [u8],
+        overlapped: *mut OVERLAPPED,
+    ) -> io::Result<Option<usize>> {
         self.0.read_overlapped(buf, overlapped)
     }
 
@@ -272,10 +284,11 @@ impl NamedPipe {
     /// To safely use this function callers must ensure that the pointers are
     /// valid until the I/O operation is completed, typically via completion
     /// ports and waiting to receive the completion notification on the port.
-    pub unsafe fn write_overlapped(&self,
-                                   buf: &[u8],
-                                   overlapped: *mut OVERLAPPED)
-                                   -> io::Result<Option<usize>> {
+    pub unsafe fn write_overlapped(
+        &self,
+        buf: &[u8],
+        overlapped: *mut OVERLAPPED,
+    ) -> io::Result<Option<usize>> {
         self.0.write_overlapped(buf, overlapped)
     }
 
@@ -296,13 +309,9 @@ impl NamedPipe {
     /// # Panics
     ///
     /// This function will panic
-    pub unsafe fn result(&self, overlapped: *mut OVERLAPPED)
-                         -> io::Result<usize> {
+    pub unsafe fn result(&self, overlapped: *mut OVERLAPPED) -> io::Result<usize> {
         let mut transferred = 0;
-        let r = GetOverlappedResult(self.0.raw(),
-                                    overlapped,
-                                    &mut transferred,
-                                    FALSE);
+        let r = GetOverlappedResult(self.0.raw(), overlapped, &mut transferred, FALSE);
         if r == 0 {
             Err(io::Error::last_os_error())
         } else {
@@ -312,27 +321,37 @@ impl NamedPipe {
 }
 
 impl Read for NamedPipe {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> { self.0.read(buf) }
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.0.read(buf)
+    }
 }
 impl<'a> Read for &'a NamedPipe {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> { self.0.read(buf) }
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.0.read(buf)
+    }
 }
 
 impl Write for NamedPipe {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> { self.0.write(buf) }
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
     fn flush(&mut self) -> io::Result<()> {
         <&NamedPipe as Write>::flush(&mut &*self)
     }
 }
 impl<'a> Write for &'a NamedPipe {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> { self.0.write(buf) }
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
     fn flush(&mut self) -> io::Result<()> {
         super::cvt(unsafe { FlushFileBuffers(self.0.raw()) }).map(|_| ())
     }
 }
 
 impl AsRawHandle for NamedPipe {
-    fn as_raw_handle(&self) -> HANDLE { self.0.raw() }
+    fn as_raw_handle(&self) -> HANDLE {
+        self.0.raw()
+    }
 }
 impl FromRawHandle for NamedPipe {
     unsafe fn from_raw_handle(handle: HANDLE) -> NamedPipe {
@@ -340,7 +359,9 @@ impl FromRawHandle for NamedPipe {
     }
 }
 impl IntoRawHandle for NamedPipe {
-    fn into_raw_handle(self) -> HANDLE { self.0.into_raw() }
+    fn into_raw_handle(self) -> HANDLE {
+        self.0.into_raw()
+    }
 }
 
 fn flag(slot: &mut DWORD, on: bool, val: DWORD) {
@@ -356,8 +377,7 @@ impl NamedPipeBuilder {
     pub fn new<A: AsRef<OsStr>>(addr: A) -> NamedPipeBuilder {
         NamedPipeBuilder {
             name: addr.as_ref().encode_wide().chain(Some(0)).collect(),
-            dwOpenMode: PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE |
-                        FILE_FLAG_OVERLAPPED,
+            dwOpenMode: PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED,
             dwPipeMode: PIPE_TYPE_BYTE,
             nMaxInstances: PIPE_UNLIMITED_INSTANCES,
             nOutBufferSize: 65536,
@@ -421,11 +441,16 @@ impl NamedPipeBuilder {
     /// result.
     pub fn create(&mut self) -> io::Result<NamedPipe> {
         let h = unsafe {
-            CreateNamedPipeW(self.name.as_ptr(),
-                             self.dwOpenMode, self.dwPipeMode,
-                             self.nMaxInstances, self.nOutBufferSize,
-                             self.nInBufferSize, self.nDefaultTimeOut,
-                             0 as *mut _)
+            CreateNamedPipeW(
+                self.name.as_ptr(),
+                self.dwOpenMode,
+                self.dwPipeMode,
+                self.nMaxInstances,
+                self.nOutBufferSize,
+                self.nInBufferSize,
+                self.nDefaultTimeOut,
+                0 as *mut _,
+            )
         };
         if h == INVALID_HANDLE_VALUE {
             Err(io::Error::last_os_error())

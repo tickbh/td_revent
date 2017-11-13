@@ -1,4 +1,5 @@
-pub use {EventFlags, FLAG_TIMEOUT, FLAG_READ, FLAG_WRITE, FLAG_PERSIST, EventLoop, RetValue, EventBuffer};
+pub use {EventFlags, FLAG_TIMEOUT, FLAG_READ, FLAG_WRITE, FLAG_PERSIST, EventLoop, RetValue,
+         EventBuffer};
 use std::fmt;
 use std::cmp::{Ord, Ordering};
 use std::hash::{self, Hash};
@@ -8,8 +9,14 @@ use psocket::{TcpSocket, SOCKET, INVALID_SOCKET};
 
 extern crate time;
 
-pub type AcceptCb = fn(ev: &mut EventLoop, Result<TcpSocket>, data: Option<&mut Box<Any>>) -> RetValue;
-pub type EventCb = fn(ev: &mut EventLoop, &mut EventBuffer, data: Option<&mut Box<Any>>) -> RetValue;
+pub type AcceptCb = fn(ev: &mut EventLoop,
+                       Result<TcpSocket>,
+                       data: Option<&mut Box<Any>>)
+                       -> RetValue;
+pub type EventCb = fn(ev: &mut EventLoop,
+                      &mut EventBuffer,
+                      data: Option<&mut Box<Any>>)
+                      -> RetValue;
 pub type EndCb = fn(ev: &mut EventLoop, &mut EventBuffer, data: Option<Box<Any>>);
 pub type TimerCb = fn(ev: &mut EventLoop, timer: u32, data: Option<&mut Box<Any>>) -> RetValue;
 
@@ -28,11 +35,12 @@ pub struct EventEntry {
 
 impl EventEntry {
     /// tick_step is us
-    pub fn new_timer(tick_step: u64,
-                     tick_repeat: bool,
-                     timer: Option<TimerCb>,
-                     data: Option<Box<Any>>)
-                     -> EventEntry {
+    pub fn new_timer(
+        tick_step: u64,
+        tick_repeat: bool,
+        timer: Option<TimerCb>,
+        data: Option<Box<Any>>,
+    ) -> EventEntry {
         EventEntry {
             tick_ms: time::precise_time_ns() / 1000 + tick_step,
             tick_step: tick_step,
@@ -51,12 +59,13 @@ impl EventEntry {
         }
     }
 
-    pub fn new_event(ev_fd: SOCKET,
-               ev_events: EventFlags,
-               event: Option<EventCb>,
-               end: Option<EndCb>,
-               data: Option<Box<Any>>)
-               -> EventEntry {
+    pub fn new_event(
+        ev_fd: SOCKET,
+        ev_events: EventFlags,
+        event: Option<EventCb>,
+        end: Option<EndCb>,
+        data: Option<Box<Any>>,
+    ) -> EventEntry {
         EventEntry {
             tick_ms: 0,
             tick_step: 0,
@@ -71,12 +80,13 @@ impl EventEntry {
         }
     }
 
-    pub fn new_accept(ev_fd: SOCKET,
-               ev_events: EventFlags,
-               accept: Option<AcceptCb>,
-               end: Option<EndCb>,
-               data: Option<Box<Any>>)
-               -> EventEntry {
+    pub fn new_accept(
+        ev_fd: SOCKET,
+        ev_events: EventFlags,
+        accept: Option<AcceptCb>,
+        end: Option<EndCb>,
+        data: Option<Box<Any>>,
+    ) -> EventEntry {
         EventEntry {
             tick_ms: 0,
             tick_step: 0,
@@ -138,18 +148,19 @@ impl EventEntry {
 
         self.end.unwrap()(ev, event, self.data.take())
     }
-
 }
 
 
 impl fmt::Debug for EventEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,
-               "ev_fd = {}, tick_ms = {}, tick_step = {}, ev_events = {:?}",
-               self.ev_fd,
-               self.tick_ms,
-               self.tick_step,
-               self.ev_events)
+        write!(
+            f,
+            "ev_fd = {}, tick_ms = {}, tick_step = {}, ev_events = {:?}",
+            self.ev_fd,
+            self.tick_ms,
+            self.tick_step,
+            self.ev_events
+        )
     }
 }
 

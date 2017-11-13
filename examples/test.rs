@@ -8,9 +8,13 @@ use std::io::Result;
 use std::any::Any;
 use self::psocket::TcpSocket;
 
-static mut S_COUNT : i32 = 0; 
+static mut S_COUNT: i32 = 0;
 
-fn client_read_callback(ev : &mut EventLoop, buffer: &mut EventBuffer, data : Option<&mut Box<Any>>) -> RetValue {
+fn client_read_callback(
+    ev: &mut EventLoop,
+    buffer: &mut EventBuffer,
+    data: Option<&mut Box<Any>>,
+) -> RetValue {
     let len = buffer.read.len();
     assert!(len > 0);
     let data = buffer.read.drain_collect(len);
@@ -34,7 +38,11 @@ fn client_read_callback(ev : &mut EventLoop, buffer: &mut EventBuffer, data : Op
     RetValue::OK
 }
 
-fn server_read_callback(ev : &mut EventLoop, buffer: &mut EventBuffer, data : Option<&mut Box<Any>>) -> RetValue {
+fn server_read_callback(
+    ev: &mut EventLoop,
+    buffer: &mut EventBuffer,
+    data: Option<&mut Box<Any>>,
+) -> RetValue {
     // let socket = any_to_mut!(data, TcpSocket);
 
     println!("server_read_callback {:?}", buffer.socket);
@@ -51,7 +59,7 @@ fn server_read_callback(ev : &mut EventLoop, buffer: &mut EventBuffer, data : Op
     //     },
     // };
     // println!("size = {:?}", size);
-    
+
 
     // if size <= 0 {
     //     ev.shutdown();
@@ -67,27 +75,40 @@ fn server_read_callback(ev : &mut EventLoop, buffer: &mut EventBuffer, data : Op
 
 
 
-fn server_end_callback(ev : &mut EventLoop, buffer: &mut EventBuffer, data : Option<Box<Any>>) {
+fn server_end_callback(ev: &mut EventLoop, buffer: &mut EventBuffer, data: Option<Box<Any>>) {
     println!("end_callback!!!!!!!!!!!!!!!!!!!!! {:?}", buffer.socket);
     println!("end_callback!!!!!!!!!!! read data {:?}", buffer.read);
 
     ev.shutdown();
 }
 
-fn client_end_callback(ev : &mut EventLoop, buffer: &mut EventBuffer, data : Option<Box<Any>>) {
+fn client_end_callback(ev: &mut EventLoop, buffer: &mut EventBuffer, data: Option<Box<Any>>) {
     println!("end_callback!!!!!!!!!!!!!!!!!!!!! {:?}", buffer.socket);
     println!("end_callback!!!!!!!!!!! read data {:?}", buffer.read);
 }
 
 
-fn accept_callback(ev : &mut EventLoop, tcp: Result<TcpSocket>, data : Option<&mut Box<Any>>) -> RetValue {
+fn accept_callback(
+    ev: &mut EventLoop,
+    tcp: Result<TcpSocket>,
+    data: Option<&mut Box<Any>>,
+) -> RetValue {
     let new_socket = tcp.unwrap();
 
     println!("{:?} attr is {:?}", new_socket, new_socket.peer_addr());
 
     let socket = new_socket.as_raw_socket();
     let buffer = ev.new_buff(new_socket);
-    ev.register_socket(buffer, EventEntry::new_event(socket, FLAG_READ | FLAG_PERSIST, Some(server_read_callback), Some(server_end_callback), None));
+    ev.register_socket(
+        buffer,
+        EventEntry::new_event(
+            socket,
+            FLAG_READ | FLAG_PERSIST,
+            Some(server_read_callback),
+            Some(server_end_callback),
+            None,
+        ),
+    );
     RetValue::OK
 }
 
@@ -109,12 +130,30 @@ fn main() {
 
     let socket = listener.as_raw_socket();
     let buffer = event_loop.new_buff(listener);
-    event_loop.register_socket(buffer, EventEntry::new_accept(socket, FLAG_READ | FLAG_PERSIST | FLAG_ACCEPT, Some(accept_callback), None, None));
+    event_loop.register_socket(
+        buffer,
+        EventEntry::new_accept(
+            socket,
+            FLAG_READ | FLAG_PERSIST | FLAG_ACCEPT,
+            Some(accept_callback),
+            None,
+            None,
+        ),
+    );
 
     let socket = client.as_raw_socket();
     let buffer = event_loop.new_buff(client);
-    event_loop.register_socket(buffer, EventEntry::new_event(socket, FLAG_READ | FLAG_PERSIST, Some(client_read_callback), Some(client_end_callback), None));
-    
+    event_loop.register_socket(
+        buffer,
+        EventEntry::new_event(
+            socket,
+            FLAG_READ | FLAG_PERSIST,
+            Some(client_read_callback),
+            Some(client_end_callback),
+            None,
+        ),
+    );
+
     // event_loop.add_new_event(client.as_raw_socket(), FLAG_READ | FLAG_PERSIST, Some(client_read_callback), Some(end_callback), Some(Box::new(client)));
 
     // mem::forget(listener);
@@ -125,4 +164,3 @@ fn main() {
 
     assert!(unsafe { S_COUNT } >= 6);
 }
-
