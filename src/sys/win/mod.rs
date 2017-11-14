@@ -10,23 +10,15 @@ extern crate rand;
 
 // pub use self::selector::Selector;
 
-pub mod selector_iocp;
-pub use self::selector_iocp::Selector;
+pub mod selector;
+pub use self::selector::Selector;
 pub use self::from_raw_arc::FromRawArc;
 
-use std::mem;
 use std::cmp;
 use std::io;
 use std::time::Duration;
 
 use winapi::*;
-
-macro_rules! t {
-    ($e:expr) => (match $e {
-        Ok(e) => e,
-        Err(e) => panic!("{} failed with {:?}", stringify!($e), e),
-    })
-}
 
 mod handle;
 mod overlapped;

@@ -1,116 +1,429 @@
-use {EventEntry, EventFlags, FLAG_READ, FLAG_WRITE};
+use {EventEntry, EventFlags, FLAG_READ, FLAG_WRITE, FLAG_ACCEPT, FLAG_ENDED, EventBuffer,
+     EventLoop, RetValue};
+use std::collections::HashMap;
 use std::mem;
-use std::ptr;
-use std::io;
+use psocket::SOCKET;
+use std::cell::UnsafeCell;
+use std::io::{self, ErrorKind};
+use std::time::Duration;
+use sys::win::iocp::{CompletionPort, CompletionStatus};
+use sys::win::{FromRawArc, Overlapped};
+use super::{TcpSocketExt, AcceptAddrsBuf};
+use psocket::{TcpSocket, SocketAddr};
 use winapi;
 use winapi::*;
-use ws2_32::*;
+use kernel32;
+use std::io::prelude::*;
+
+
+macro_rules! overlapped2arc {
+    ($e:expr, $t:ty, $($field:ident).+) => ({
+        unsafe {
+            let offset = offset_of!($t, $($field).+);
+            debug_assert!(offset < mem::size_of::<$t>());
+            FromRawArc::from_raw(($e as usize - offset) as *mut $t)
+        }
+    })
+}
+
+macro_rules! offset_of {
+    ($t:ty, $($field:ident).+) => (
+        &(*(0 as *const $t)).$($field).+ as *const _ as usize
+    )
+}
+
+pub struct Event {
+    pub buffer: EventBuffer,
+    pub entry: EventEntry,
+    pub read: CbOverlapped,
+    pub write: CbOverlapped,
+    pub accept_buf: Option<AcceptAddrsBuf>,
+    pub accept_socket: Option<TcpSocket>,
+    pub is_end: bool,
+}
+
+impl Event {
+    pub fn is_accept(&self) -> bool {
+        self.entry.ev_events.contains(FLAG_ACCEPT)
+    }
+
+    pub fn get_event_socket(&self) -> SOCKET {
+        self.buffer.socket.as_raw_socket()
+    }
+}
+
+#[derive(Clone)]
+pub struct EventImpl {
+    pub inner: FromRawArc<Event>,
+}
+
+impl EventImpl {
+    pub fn new(event: Event) -> EventImpl {
+        EventImpl { inner: FromRawArc::new(event) }
+    }
+}
+
+#[derive(Debug)]
+pub struct Events {
+    /// Raw I/O event completions are filled in here by the call to `get_many`
+    /// on the completion port above. These are then processed to run callbacks
+    /// which figure out what to do after the event is done.
+    statuses: Box<[CompletionStatus]>,
+}
+
+#[repr(C)]
+pub struct CbOverlapped {
+    inner: UnsafeCell<Overlapped>,
+    callback: fn(&mut EventLoop, &OVERLAPPED_ENTRY),
+}
+
+
+impl CbOverlapped {
+    /// Creates a new `Overlapped` which will invoke the provided `cb` callback
+    /// whenever it's triggered.
+    ///
+    /// The returned `Overlapped` must be used as the `OVERLAPPED` passed to all
+    /// I/O operations that are registered with mio's event loop. When the I/O
+    /// operation associated with an `OVERLAPPED` pointer completes the event
+    /// loop will invoke the function pointer provided by `cb`.
+    pub fn new(cb: fn(&mut EventLoop, &OVERLAPPED_ENTRY)) -> CbOverlapped {
+        CbOverlapped {
+            inner: UnsafeCell::new(Overlapped::zero()),
+            callback: cb,
+        }
+    }
+
+    /// Get the underlying `Overlapped` instance as a raw pointer.
+    ///
+    /// This can be useful when only a shared borrow is held and the overlapped
+    /// pointer needs to be passed down to winapi.
+    pub fn as_mut_ptr(&self) -> *mut OVERLAPPED {
+        unsafe { (*self.inner.get()).raw() }
+    }
+}
+
+impl Events {
+    pub fn with_capacity(cap: usize) -> Events {
+        Events {
+            statuses: vec![CompletionStatus::zero(); cap].into_boxed_slice(),
+        }
+    }
+}
+
+fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
+    let status = CompletionStatus::from_entry(status);
+    let mut event = overlapped2arc!(status.overlapped(), Event, read);
+    if event.is_accept() {
+        let mut socket = event.accept_socket.take().unwrap();
+        let result = event.buffer.socket.accept_complete(&socket).and_then(|()| {
+            event.accept_buf.as_ref().unwrap().parse(&event.buffer.socket)
+        }).and_then(|buf| {
+            buf.remote().ok_or_else(|| {
+                io::Error::new(ErrorKind::Other, "could not obtain remote address")
+            })
+        });
+        let ret = match result {
+            Ok(remote_addr) => {
+                socket.set_peer_addr(remote_addr);
+                event.entry.accept_cb(event_loop, Ok(socket))
+            }
+            Err(e) => event.entry.accept_cb(event_loop, Err(e)),
+        };
+        match ret {
+            RetValue::OVER => {
+                event_loop.unregister_socket(event.get_event_socket(), EventFlags::all());
+            }
+            _ => {
+                if let Err(err) = event_loop.selector.post_accept_event(
+                    event.get_event_socket(),
+                )
+                {
+                    event.buffer.error = Err(err);
+                    event_loop.unregister_socket(event.get_event_socket(), EventFlags::all());
+                }
+            }
+        }
+        return;
+    } else {
+        let mut bytes_transferred = status.bytes_transferred() as usize;
+        println!("read_callback!!!!!!! read size = {:?}", bytes_transferred);
+        if status.flag().contains(FLAG_ENDED) {
+            Selector::_unregister_socket(
+                event_loop,
+                event.buffer.as_raw_socket(),
+                EventFlags::all(),
+            );
+            return;
+        }
+
+        if bytes_transferred == 0 {
+            Selector::unregister_socket(
+                event_loop,
+                event.buffer.as_raw_socket(),
+                EventFlags::all(),
+            );
+            return;
+        }
+        let mut event_clone = event.clone();
+        if bytes_transferred > 0 {
+            let _ = event.buffer.read.write(
+                &event_clone.buffer.read_cache
+                    [..bytes_transferred],
+            );
+        }
+        let res = event_loop.selector.post_read_event(
+            &event.get_event_socket(),
+        );
+        if event.buffer.has_read_buffer() {
+            match event.entry.EventCb(event_loop, &mut event_clone.buffer) {
+                RetValue::OVER => {
+                    event_loop.unregister_socket(event.get_event_socket(), EventFlags::all());
+                    return;
+                }
+                _ => (),
+            }
+        }
+        if res.is_err() {
+            event.buffer.error = res;
+            event_loop.unregister_socket(event.get_event_socket(), EventFlags::all());
+        }
+    }
+}
+
+fn write_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
+    let status = CompletionStatus::from_entry(status);
+    let mut event = overlapped2arc!(status.overlapped(), Event, write);
+    event.buffer.is_in_write = false;
+
+    println!("write_done = {:?}", event.buffer.as_raw_socket());
+    event_loop.selector.post_write_event(
+        &event.buffer.as_raw_socket(),
+        None,
+    );
+}
+
+impl Event {
+    pub fn new(buffer: EventBuffer, entry: EventEntry) -> Event {
+        Event {
+            buffer: buffer,
+            entry: entry,
+            read: CbOverlapped::new(read_done),
+            write: CbOverlapped::new(write_done),
+            accept_socket: None,
+            accept_buf: Some(AcceptAddrsBuf::new()),
+            is_end: false,
+        }
+    }
+}
 
 pub struct Selector {
-    write_sockets: Vec<SOCKET>,
-    read_sockets: Vec<SOCKET>,
-    read_sets: winapi::fd_set,
-    write_sets: winapi::fd_set,
-
-    event_maps: HashMap<i32, EventEntry>,
+    port: CompletionPort,
+    events: Events,
+    event_maps: HashMap<SOCKET, EventImpl>,
 }
 
 impl Selector {
-    pub fn new() -> io::Result<Selector> {
+    pub fn new(capacity: usize) -> io::Result<Selector> {
         Ok(Selector {
-            write_sockets: Vec::new(),
-            read_sockets: Vec::new(),
-            read_sets: unsafe { mem::zeroed() },
-            write_sets: unsafe { mem::zeroed() },
+            port: CompletionPort::new(1)?,
+            events: Events::with_capacity(capacity),
+            event_maps: HashMap::new(),
         })
     }
 
-    pub fn select(&mut self, evts: &mut Vec<EventEntry>, timeout: u32) -> io::Result<u32> {
-        fn copy_sets(vec: &Vec<SOCKET>, fd_set: &mut winapi::fd_set, index: usize) -> usize {
-            let mut new_index = index;
-            fd_set.fd_count = 0;
-            for i in index..vec.len() {
-                fd_set.fd_array[fd_set.fd_count as usize] = vec[i];
-                fd_set.fd_count += 1;
-                new_index += 1;
-                if fd_set.fd_count >= winapi::FD_SETSIZE as u32 {
-                    return new_index;
-                }
-            }
-            new_index
-        }
-
-        evts.clear();
-        let mut size = 0;
-        let mut read_index = 0;
-        let mut write_index = 0;
-        let mut time = timeval {
-            tv_sec: (timeout / 1000) as i32,
-            tv_usec: ((timeout % 1000) * 1000) as i32,
+    /// 获取当前可执行的事件, 并同时处理数据, 返回执行的个数
+    pub fn do_select(event: &mut EventLoop, timeout: usize) -> io::Result<usize> {
+        let n = match event.selector.port.get_many(
+            &mut event.selector.events.statuses,
+            Some(Duration::from_millis(timeout as u64)),
+        ) {
+            Ok(statuses) => statuses.len(),
+            Err(ref e) if e.raw_os_error() == Some(WAIT_TIMEOUT as i32) => 0,
+            Err(e) => return Err(e),
         };
-        while read_index < self.read_sockets.len() || write_index < self.write_sockets.len() {
-            read_index += copy_sets(&self.read_sockets, &mut self.read_sets, read_index);
-            write_index += copy_sets(&self.write_sockets, &mut self.write_sets, write_index);
-            let count = unsafe {
-                select(0,
-                       &mut self.read_sets,
-                       &mut self.write_sets,
-                       ptr::null_mut(),
-                       &mut time)
-            };
-            if count <= 0 {
+
+        let statuses = event.selector.events.statuses[..n].to_vec();
+        for status in statuses {
+            // This should only ever happen from the awakener, and we should
+            // only ever have one awakener right now, so assert as such.
+            if status.overlapped() as usize == 0 {
                 continue;
             }
 
-            if self.read_sets.fd_count > 0 {
-                for i in 0..self.read_sets.fd_count {
-                    evts.push(EventEntry::new_evfd(self.read_sets.fd_array[i as usize] as i32,
-                                                   FLAG_READ));
-                }
-                size += self.read_sets.fd_count;
-            }
-            if self.write_sets.fd_count > 0 {
-                for i in 0..self.write_sets.fd_count {
-                    evts.push(EventEntry::new_evfd(self.write_sets.fd_array[i as usize] as i32,
-                                                   FLAG_WRITE));
-                }
-                size += self.write_sets.fd_count;
-            }
+            let callback = unsafe { (*(status.overlapped() as *mut CbOverlapped)).callback };
+            callback(event, status.entry());
         }
-        Ok(size)
+        Ok(n)
     }
 
-    pub fn register(&mut self, fd: i32, ev_events: EventFlags) {
-        let fd = fd as SOCKET;
-        if ev_events.contains(FLAG_READ) && !self.read_sockets.contains(&fd) {
-            self.read_sockets.push(fd);
+    /// 向iocp投递接受socket事件, 只有listener的socket投递该事件才有效
+    /// 接受事件会预先准备好socket, 等待iocp的回调, 回调成功会再次进行该投递, 保证一直可接受新的
+    fn post_accept_event(&mut self, socket: SOCKET) -> io::Result<()> {
+        if let Some(event) = self.event_maps.get_mut(&socket) {
+            let event = &mut (*event.inner);
+            let addr = event.buffer.socket.local_addr()?;
+            event.accept_socket = Some(match addr {
+                SocketAddr::V4(..) => TcpSocket::new_v4()?,
+                SocketAddr::V6(..) => TcpSocket::new_v6()?,
+            });
+            unsafe {
+                event.buffer.socket.accept_overlapped(
+                    &event.accept_socket.as_ref().unwrap(),
+                    event.accept_buf.as_mut().unwrap(),
+                    event.read.as_mut_ptr(),
+                )?;
+            }
         }
-        if ev_events.contains(FLAG_WRITE) && !self.write_sockets.contains(&fd) {
-            self.write_sockets.push(fd);
-        }
+        Ok(())
     }
 
-    pub fn deregister(&mut self, fd: i32, flag: EventFlags) {
-        let fd = fd as SOCKET;
-        fn search_index(vec: &Vec<SOCKET>, value: &SOCKET) -> Option<usize> {
-            for (i, v) in vec.iter().enumerate() {
-                if value == v {
-                    return Some(i);
+    /// 向iocp投递读的事件, 每个socket确保只有一个读事件正在执行, 确保数据不会被打乱
+    /// 投递完成事件只有在初始添加时添加, 和读回调后再进行投递
+    /// 每次投递不管是立即返回还是WSA_IO_PENDING, 都将会在GetQueuedCompletionStatus得到结果
+    /// 所以在此处不做数据处理, 仅仅只进行数据投递, 在回调的时候根据bytes_transferred获取读的数量
+    fn post_read_event(&mut self, socket: &SOCKET) -> io::Result<()> {
+        if let Some(ev) = self.event_maps.get_mut(&socket) {
+            let event = &mut (*ev.clone().inner);
+            if event.is_end {
+                return Ok(());
+            }
+            unsafe {
+                event.buffer.socket.read_overlapped(
+                    &mut event.buffer.read_cache[..],
+                    event.read.as_mut_ptr(),
+                )?
+            };
+        }
+        Ok(())
+    }
+
+    /// 向iocp投递写的事件, 如果正在写入, 或者写缓存为空, 或者已结束就不投递事件
+    /// 用WSASend发送相关的消息, 可立即得到发送的字节数, 清除相关的写缓存, 并返回大小
+    /// 如果写缓存数据没有全部被写入, 则表示当前无法全部写入, 设置socket状态在写状态
+    /// 等待写完成的事件通知, 再写入剩余的相关数据
+    fn post_write_event(&mut self, socket: &SOCKET, data: Option<&[u8]>) -> io::Result<usize> {
+        if let Some(ev) = self.event_maps.get_mut(&socket) {
+            let event = &mut (*ev.clone().inner);
+            if data.is_some() {
+                event.buffer.write.write(data.unwrap());
+            }
+            if event.buffer.is_in_write || event.buffer.write.empty() || event.is_end {
+                return Ok(0);
+            }
+
+            let write = event.write.as_mut_ptr();
+            let res = unsafe {
+                event.buffer.socket.write_overlapped(
+                    &event.buffer.write.get_data()[..],
+                    write,
+                )?
+            };
+
+            match res {
+                Some(n) => {
+                    event.buffer.write.drain(n);
+                    //如果写入包没有写入完毕, 则表示iocp已被填满, 如果下次写入的将等待write事件返回再次写入
+                    if !event.buffer.write.empty() {
+                        event.buffer.is_in_write = true;
+                    }
+                    return Ok(n);
+                }
+                _ => {
+                    return Ok(0);
                 }
             }
-            None
+        }
+        Err(io::Error::new(
+            ErrorKind::Other,
+            "the socket already be remove",
+        ))
+    }
+
+    fn check_socket_event(&mut self, socket: SOCKET) -> io::Result<()> {
+        if !self.event_maps.contains_key(&socket) {
+            return Ok(());
+        }
+
+        let flag = {
+            let event = &self.event_maps[&socket];
+            (event.inner).entry.ev_events
         };
 
-        if flag.contains(FLAG_READ) {
-            if let Some(index) = search_index(&self.read_sockets, &fd) {
-                self.read_sockets.remove(index);
+        if flag.contains(FLAG_ACCEPT) {
+            self.post_accept_event(socket)?;
+        } else {
+            if flag.contains(FLAG_READ) {
+                self.post_read_event(&socket)?;
             }
+            if flag.contains(FLAG_WRITE) {
+                self.post_write_event(&socket, None)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// 注册socket事件, 把socket加入到iocp的监听中, 如果监听错误, 则移除相关的资源
+    pub fn register_socket(
+        event_loop: &mut EventLoop,
+        buffer: EventBuffer,
+        entry: EventEntry,
+    ) -> io::Result<()> {
+        let selector = &mut event_loop.selector;
+        let socket = buffer.as_raw_socket();
+
+        if selector.event_maps.contains_key(&socket) {
+            selector.event_maps.remove(&socket);
         }
 
-        if flag.contains(FLAG_WRITE) {
-            if let Some(index) = search_index(&self.write_sockets, &fd) {
-                self.write_sockets.remove(index);
-            }
+        selector.port.add_socket(entry.ev_events, &buffer.socket)?;
+        let event = Event::new(buffer, entry);
+        selector.event_maps.insert(socket, EventImpl::new(event));
+        if let Err(e) = selector.check_socket_event(socket) {
+            selector.event_maps.remove(&socket);
+            return Err(e);
         }
+        Ok(())
+    }
+
+    /// 收到FLAG_ENDED事件的时候, 把相关的socket资源全部释放完毕
+    /// 并触发end_cb事件, 如果有关注此事件, 可得到当前socket的最后状态
+    fn _unregister_socket(
+        event_loop: &mut EventLoop,
+        socket: SOCKET,
+        _flags: EventFlags,
+    ) -> io::Result<()> {
+        if let Some(mut ev) = event_loop.selector.event_maps.remove(&socket) {
+            let event = &mut (*ev.clone().inner);
+            let event_clone = &mut (*ev.inner);
+            event.entry.end_cb(event_loop, &mut event_clone.buffer);
+        }
+        Ok(())
+    }
+
+    /// 取消某个socket的监听, iocp模式下flags参数无效
+    /// iocp模式下, 会把事件置成已完成状态, 这时不可写不可读
+    /// 并且把指定的socket手动关闭保证iocp里面的read和write事件先被唤醒
+    /// 然后发送FLAG_ENDED事件, 进行最终析构, 确保资源正确的释放
+    pub fn unregister_socket(
+        event_loop: &mut EventLoop,
+        socket: SOCKET,
+        _flags: EventFlags,
+    ) -> io::Result<()> {
+        if let Some(ev) = event_loop.selector.event_maps.get_mut(&socket) {
+            let event = &mut (*ev.clone().inner);
+            if event.is_end {
+                return Ok(());
+            }
+            event.buffer.socket.close();
+            event.is_end = true;
+            event_loop.selector.port.post_info(0, FLAG_ENDED, event.read.as_mut_ptr())?;
+        }
+        Ok(())
+    }
+
+    // 给指定的socket发送数据, 如果不能一次发送完毕则会写入到缓存中, 等待下次继续发送
+    // 返回值为指定的当次的写入大小, 如果没有全部写完数据, 则下次写入先写到缓冲中, 等待系统的可写通知
+    pub fn send_socket(event_loop: &mut EventLoop, socket: &SOCKET, data: &[u8]) -> io::Result<usize> {
+        event_loop.selector.post_write_event(socket, Some(data))
     }
 }
