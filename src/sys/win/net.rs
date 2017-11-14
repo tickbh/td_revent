@@ -492,7 +492,6 @@ impl TcpSocketExt for TcpSocket {
         buf: &mut [u8],
         overlapped: *mut OVERLAPPED,
     ) -> io::Result<Option<usize>> {
-        println!("buf len = {:?}", buf.len());
         let mut buf = slice2buf(buf);
         let mut flags = 0;
         let mut bytes_read: DWORD = 0;
@@ -505,9 +504,6 @@ impl TcpSocketExt for TcpSocket {
             overlapped,
             None,
         );
-        println!("bytes_read = {:?}", bytes_read);
-        println!("flags = {:?}", flags);
-        println!("r = {:?}", r);
         cvt(r, bytes_read)
     }
 

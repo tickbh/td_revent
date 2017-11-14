@@ -33,7 +33,6 @@ mod overlapped;
 
 pub mod iocp;
 pub mod net;
-pub mod pipe;
 pub mod from_raw_arc;
 
 pub use self::overlapped::Overlapped;
