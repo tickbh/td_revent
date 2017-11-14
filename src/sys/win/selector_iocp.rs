@@ -37,8 +37,8 @@ pub struct Event {
     pub entry: EventEntry,
     pub read: CbOverlapped,
     pub write: CbOverlapped,
-    pub accept_buf: AcceptAddrsBuf,
-    pub accept_socket: TcpSocket,
+    pub accept_buf: Option<AcceptAddrsBuf>,
+    pub accept_socket: Option<TcpSocket>,
     pub is_end: bool,
 }
 
@@ -114,9 +114,9 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
     let status = CompletionStatus::from_entry(status);
     let mut event = overlapped2arc!(status.overlapped(), Event, read);
     if event.is_accept() {
-        let mut socket = mem::replace(&mut event.accept_socket, TcpSocket::new_invalid().unwrap());
+        let mut socket = event.accept_socket.take().unwrap();
         let result = event.buffer.socket.accept_complete(&socket).and_then(|()| {
-            event.accept_buf.parse(&event.buffer.socket)
+            event.accept_buf.as_ref().unwrap().parse(&event.buffer.socket)
         }).and_then(|buf| {
             buf.remote().ok_or_else(|| {
                 io::Error::new(ErrorKind::Other, "could not obtain remote address")
@@ -146,6 +146,7 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
         return;
     } else {
         let mut bytes_transferred = status.bytes_transferred() as usize;
+        println!("read_callback!!!!!!! read size = {:?}", bytes_transferred);
         if status.flag().contains(FLAG_ENDED) {
             Selector::_unregister_socket(
                 event_loop,
@@ -193,6 +194,8 @@ fn write_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
     let status = CompletionStatus::from_entry(status);
     let mut event = overlapped2arc!(status.overlapped(), Event, write);
     event.buffer.is_in_write = false;
+
+    println!("write_done = {:?}", event.buffer.as_raw_socket());
     event_loop.selector.post_write_event(
         &event.buffer.as_raw_socket(),
         None,
@@ -206,8 +209,8 @@ impl Event {
             entry: entry,
             read: CbOverlapped::new(read_done),
             write: CbOverlapped::new(write_done),
-            accept_socket: TcpSocket::new_invalid().unwrap(),
-            accept_buf: AcceptAddrsBuf::new(),
+            accept_socket: None,
+            accept_buf: Some(AcceptAddrsBuf::new()),
             is_end: false,
         }
     }
@@ -239,6 +242,24 @@ impl Selector {
         };
 
         let statuses = event.selector.events.statuses[..n].to_vec();
+        if n > 0 {
+            println!("0000000000do_select n = {:?}", n);
+            // for status in &statuses {
+            //     if status.overlapped() as usize == 0 {
+            //         println!("empty!!!!!!!!!!!!!");
+            //         continue;
+            //     }
+            //     // let status = CompletionStatus::from_entry(status);
+            //     let mut event = if status.flag().contains(FLAG_READ) {
+            //         overlapped2arc!(status.overlapped(), Event, read)
+            //     } else {
+            //         overlapped2arc!(status.overlapped(), Event, write)
+            //     };
+
+            //     println!("socket is = {:?} flag = {:?}", event.buffer.as_raw_socket(), status.flag());
+            //     mem::forget(event);
+            // }
+        }
 
         for status in statuses {
             // This should only ever happen from the awakener, and we should
@@ -257,14 +278,14 @@ impl Selector {
         if let Some(event) = self.event_maps.get_mut(&socket) {
             let event = &mut (*event.inner);
             let addr = event.buffer.socket.local_addr()?;
-            event.accept_socket = match addr {
+            event.accept_socket = Some(match addr {
                 SocketAddr::V4(..) => TcpSocket::new_v4()?,
                 SocketAddr::V6(..) => TcpSocket::new_v6()?,
-            };
+            });
             unsafe {
                 event.buffer.socket.accept_overlapped(
-                    &event.accept_socket,
-                    &mut event.accept_buf,
+                    &event.accept_socket.as_ref().unwrap(),
+                    event.accept_buf.as_mut().unwrap(),
                     event.read.as_mut_ptr(),
                 )?;
             }
@@ -278,6 +299,7 @@ impl Selector {
             if event.is_end {
                 return Ok(());
             }
+            println!("0000000000post_read_event!!!!!!!! socket = {:?}", socket);
             unsafe {
                 event.buffer.socket.read_overlapped(
                     &mut event.buffer.read_cache[..],
@@ -292,11 +314,14 @@ impl Selector {
         if let Some(ev) = self.event_maps.get_mut(&socket) {
             let event = &mut (*ev.clone().inner);
             if data.is_some() {
+                println!("post_write_event data size = {:?}", data.unwrap().len());
                 event.buffer.write.write(data.unwrap());
             }
             if event.buffer.is_in_write || event.buffer.write.empty() || event.is_end {
                 return Ok(0);
             }
+
+            println!("0000000000post_write_event!!!!!!!! socket = {:?}", socket);
             let write = event.write.as_mut_ptr();
             let res = unsafe {
                 event.buffer.socket.write_overlapped(
@@ -305,9 +330,14 @@ impl Selector {
                 )?
             };
 
+            println!("post_write_event len = {} write = {:?}", event.buffer.write.get_data().len(), res);
+
             match res {
                 Some(n) => {
+
+                    println!("write success size = {:?} write len = {:?}", n, event.buffer.write.len());
                     event.buffer.write.drain(n);
+                    println!("after len = {:?}", event.buffer.write.len());
                     //如果写入包没有写入完毕, 则表示iocp已被填满, 如果下次写入的将等待write事件返回再次写入
                     if !event.buffer.write.empty() {
                         event.buffer.is_in_write = true;
@@ -393,13 +423,18 @@ impl Selector {
             if event.is_end {
                 return Ok(());
             }
+            // 必须先主动关闭掉socket保证iocp里面的read和write事件先被唤醒
+            // 然后才唤醒FLAG_ENDED事件, 进行最终析构, 确保资源正确的释放
+            event.buffer.socket.close();
             event.is_end = true;
+            println!("0000000000post info!!!!!!!!!!!!!!!! socket = {:?}", event.buffer.as_raw_socket());
             event_loop.selector.port.post_info(0, FLAG_ENDED, event.read.as_mut_ptr())?;
         }
         Ok(())
     }
 
     pub fn send_socket(event_loop: &mut EventLoop, socket: &SOCKET, data: &[u8]) -> io::Result<usize> {
+        println!("send_socket = {:?} data = {:?}", socket, data);
         event_loop.selector.post_write_event(socket, Some(data))
     }
 }

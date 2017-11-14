@@ -153,6 +153,8 @@ impl CompletionPort {
                 FALSE,
             )
         };
+
+        // println!("max len = {:?} cur read len = {:?} ret = {:?}", len, removed, ret);
         match super::cvt(ret) {
             Ok(_) => Ok(&mut list[..removed as usize]),
             Err(e) => Err(e),

@@ -18,9 +18,6 @@ fn client_read_callback(
     let len = buffer.read.len();
     assert!(len > 0);
     let data = buffer.read.drain_collect(len);
-    let val = String::from_utf8_lossy(&data[..]);
-    println!("client_read_callback = {:?}", val);
-    ev.send_socket(&buffer.as_raw_socket(), &data[..]);
 
     let count = unsafe {
         S_COUNT = S_COUNT + 1;
@@ -123,7 +120,7 @@ fn main() {
     let mut client = TcpSocket::connect(&addr).unwrap();
     let _ = client.set_nonblocking(true);
 
-    client.write(b"hello world").unwrap();
+    client.write(b"hello world. ").unwrap();
 
     // let mut sock_mgr = SocketManger { listener : listener, client : client };
     // event_loop.add_new_event(listener.as_raw_socket() as i32, FLAG_READ | FLAG_PERSIST, Some(accept_callback), Some(Box::new(listener)));
