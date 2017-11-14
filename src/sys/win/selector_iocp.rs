@@ -223,15 +223,16 @@ pub struct Selector {
 }
 
 impl Selector {
-    pub fn new() -> io::Result<Selector> {
+    pub fn new(capacity: usize) -> io::Result<Selector> {
         Ok(Selector {
             port: CompletionPort::new(1)?,
-            events: Events::with_capacity(1024),
+            events: Events::with_capacity(capacity),
             event_maps: HashMap::new(),
         })
     }
 
-    pub fn do_select(event: &mut EventLoop, timeout: u32) -> io::Result<u32> {
+    /// 获取当前可执行的事件, 并同时处理数据, 返回执行的个数
+    pub fn do_select(event: &mut EventLoop, timeout: usize) -> io::Result<usize> {
         let n = match event.selector.port.get_many(
             &mut event.selector.events.statuses,
             Some(Duration::from_millis(timeout as u64)),
@@ -242,25 +243,6 @@ impl Selector {
         };
 
         let statuses = event.selector.events.statuses[..n].to_vec();
-        if n > 0 {
-            println!("0000000000do_select n = {:?}", n);
-            // for status in &statuses {
-            //     if status.overlapped() as usize == 0 {
-            //         println!("empty!!!!!!!!!!!!!");
-            //         continue;
-            //     }
-            //     // let status = CompletionStatus::from_entry(status);
-            //     let mut event = if status.flag().contains(FLAG_READ) {
-            //         overlapped2arc!(status.overlapped(), Event, read)
-            //     } else {
-            //         overlapped2arc!(status.overlapped(), Event, write)
-            //     };
-
-            //     println!("socket is = {:?} flag = {:?}", event.buffer.as_raw_socket(), status.flag());
-            //     mem::forget(event);
-            // }
-        }
-
         for status in statuses {
             // This should only ever happen from the awakener, and we should
             // only ever have one awakener right now, so assert as such.
@@ -271,10 +253,12 @@ impl Selector {
             let callback = unsafe { (*(status.overlapped() as *mut CbOverlapped)).callback };
             callback(event, status.entry());
         }
-        Ok(0)
+        Ok(n)
     }
 
-    pub fn post_accept_event(&mut self, socket: SOCKET) -> io::Result<()> {
+    /// 向iocp投递接受socket事件, 只有listener的socket投递该事件才有效
+    /// 接受事件会预先准备好socket, 等待iocp的回调, 回调成功会再次进行该投递, 保证一直可接受新的
+    fn post_accept_event(&mut self, socket: SOCKET) -> io::Result<()> {
         if let Some(event) = self.event_maps.get_mut(&socket) {
             let event = &mut (*event.inner);
             let addr = event.buffer.socket.local_addr()?;
@@ -293,13 +277,16 @@ impl Selector {
         Ok(())
     }
 
-    pub fn post_read_event(&mut self, socket: &SOCKET) -> io::Result<()> {
+    /// 向iocp投递读的事件, 每个socket确保只有一个读事件正在执行, 确保数据不会被打乱
+    /// 投递完成事件只有在初始添加时添加, 和读回调后再进行投递
+    /// 每次投递不管是立即返回还是WSA_IO_PENDING, 都将会在GetQueuedCompletionStatus得到结果
+    /// 所以在此处不做数据处理, 仅仅只进行数据投递, 在回调的时候根据bytes_transferred获取读的数量
+    fn post_read_event(&mut self, socket: &SOCKET) -> io::Result<()> {
         if let Some(ev) = self.event_maps.get_mut(&socket) {
             let event = &mut (*ev.clone().inner);
             if event.is_end {
                 return Ok(());
             }
-            println!("0000000000post_read_event!!!!!!!! socket = {:?}", socket);
             unsafe {
                 event.buffer.socket.read_overlapped(
                     &mut event.buffer.read_cache[..],
@@ -310,18 +297,20 @@ impl Selector {
         Ok(())
     }
 
-    pub fn post_write_event(&mut self, socket: &SOCKET, data: Option<&[u8]>) -> io::Result<usize> {
+    /// 向iocp投递写的事件, 如果正在写入, 或者写缓存为空, 或者已结束就不投递事件
+    /// 用WSASend发送相关的消息, 可立即得到发送的字节数, 清除相关的写缓存, 并返回大小
+    /// 如果写缓存数据没有全部被写入, 则表示当前无法全部写入, 设置socket状态在写状态
+    /// 等待写完成的事件通知, 再写入剩余的相关数据
+    fn post_write_event(&mut self, socket: &SOCKET, data: Option<&[u8]>) -> io::Result<usize> {
         if let Some(ev) = self.event_maps.get_mut(&socket) {
             let event = &mut (*ev.clone().inner);
             if data.is_some() {
-                println!("post_write_event data size = {:?}", data.unwrap().len());
                 event.buffer.write.write(data.unwrap());
             }
             if event.buffer.is_in_write || event.buffer.write.empty() || event.is_end {
                 return Ok(0);
             }
 
-            println!("0000000000post_write_event!!!!!!!! socket = {:?}", socket);
             let write = event.write.as_mut_ptr();
             let res = unsafe {
                 event.buffer.socket.write_overlapped(
@@ -330,14 +319,9 @@ impl Selector {
                 )?
             };
 
-            println!("post_write_event len = {} write = {:?}", event.buffer.write.get_data().len(), res);
-
             match res {
                 Some(n) => {
-
-                    println!("write success size = {:?} write len = {:?}", n, event.buffer.write.len());
                     event.buffer.write.drain(n);
-                    println!("after len = {:?}", event.buffer.write.len());
                     //如果写入包没有写入完毕, 则表示iocp已被填满, 如果下次写入的将等待write事件返回再次写入
                     if !event.buffer.write.empty() {
                         event.buffer.is_in_write = true;
@@ -355,7 +339,7 @@ impl Selector {
         ))
     }
 
-    pub fn check_socket_event(&mut self, socket: SOCKET) -> io::Result<()> {
+    fn check_socket_event(&mut self, socket: SOCKET) -> io::Result<()> {
         if !self.event_maps.contains_key(&socket) {
             return Ok(());
         }
@@ -378,6 +362,7 @@ impl Selector {
         Ok(())
     }
 
+    /// 注册socket事件, 把socket加入到iocp的监听中, 如果监听错误, 则移除相关的资源
     pub fn register_socket(
         event_loop: &mut EventLoop,
         buffer: EventBuffer,
@@ -400,7 +385,9 @@ impl Selector {
         Ok(())
     }
 
-    pub fn _unregister_socket(
+    /// 收到FLAG_ENDED事件的时候, 把相关的socket资源全部释放完毕
+    /// 并触发end_cb事件, 如果有关注此事件, 可得到当前socket的最后状态
+    fn _unregister_socket(
         event_loop: &mut EventLoop,
         socket: SOCKET,
         _flags: EventFlags,
@@ -413,6 +400,10 @@ impl Selector {
         Ok(())
     }
 
+    /// 取消某个socket的监听, iocp模式下flags参数无效
+    /// iocp模式下, 会把事件置成已完成状态, 这时不可写不可读
+    /// 并且把指定的socket手动关闭保证iocp里面的read和write事件先被唤醒
+    /// 然后发送FLAG_ENDED事件, 进行最终析构, 确保资源正确的释放
     pub fn unregister_socket(
         event_loop: &mut EventLoop,
         socket: SOCKET,
@@ -423,18 +414,16 @@ impl Selector {
             if event.is_end {
                 return Ok(());
             }
-            // 必须先主动关闭掉socket保证iocp里面的read和write事件先被唤醒
-            // 然后才唤醒FLAG_ENDED事件, 进行最终析构, 确保资源正确的释放
             event.buffer.socket.close();
             event.is_end = true;
-            println!("0000000000post info!!!!!!!!!!!!!!!! socket = {:?}", event.buffer.as_raw_socket());
             event_loop.selector.port.post_info(0, FLAG_ENDED, event.read.as_mut_ptr())?;
         }
         Ok(())
     }
 
+    // 给指定的socket发送数据, 如果不能一次发送完毕则会写入到缓存中, 等待下次继续发送
+    // 返回值为指定的当次的写入大小, 如果没有全部写完数据, 则下次写入先写到缓冲中, 等待系统的可写通知
     pub fn send_socket(event_loop: &mut EventLoop, socket: &SOCKET, data: &[u8]) -> io::Result<usize> {
-        println!("send_socket = {:?} data = {:?}", socket, data);
         event_loop.selector.post_write_event(socket, Some(data))
     }
 }

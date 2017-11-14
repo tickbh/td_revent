@@ -22,17 +22,21 @@ pub struct EventLoopConfig {
     pub notify_capacity: usize,
     pub messages_per_tick: usize,
 
-    // == Timer ==
+    pub select_catacity: usize,
     pub buffer_capacity: usize,
+
+    // == Timer ==
     pub time_max_id: u32,
 }
 
 impl Default for EventLoopConfig {
     fn default() -> EventLoopConfig {
         EventLoopConfig {
-            io_poll_timeout_ms: 1_000,
+            io_poll_timeout_ms: 1,
             notify_capacity: 4_096,
             messages_per_tick: 256,
+
+            select_catacity: 1024,
             buffer_capacity: 65_536,
             time_max_id: u32::max_value() / 2,
         }
@@ -58,75 +62,50 @@ impl EventLoop {
 
     pub fn configured(config: EventLoopConfig) -> io::Result<EventLoop> {
         let timer = Timer::new(config.time_max_id);
-        let selector = try!(Selector::new());
+        let selector = try!(Selector::new(config.select_catacity));
         Ok(EventLoop {
             run: true,
             timer: timer,
             selector: selector,
             config: config,
-            // event_maps: HashMap::new(),
             evts: vec![],
         })
     }
 
-    /// Tells the event loop to exit after it is done handling all events in the
-    /// current iteration.
+    /// 关闭主循环, 将在下一次逻辑执行时退出主循环
     pub fn shutdown(&mut self) {
         self.run = false;
 
     }
 
-    /// Indicates whether the event loop is currently running. If it's not it has either
-    /// stopped or is scheduled to stop on the next tick.
+    /// 判断刚才主循环是否在运行中
     pub fn is_running(&self) -> bool {
         self.run
     }
 
-    /// Keep spinning the event loop indefinitely, and notify the handler whenever
-    /// any of the registered handles are ready.
+    /// 循环执行事件的主逻辑, 直到此主循环被shutdown则停止执行
     pub fn run(&mut self) -> io::Result<()> {
         self.run = true;
 
         while self.run {
-            // Execute ticks as long as the event loop is running
-            try!(self.run_once());
+            // 该此循环中, 没有任何数据得到处理, 则强制cpu休眠1ms, 以防止cpu跑满100%
+            if !self.run_once()? {
+                ::std::thread::sleep(::std::time::Duration::from_millis(1));
+            }
 
         }
-
         Ok(())
     }
 
-    /// Spin the event loop once, with a timeout of one second, and notify the
-    /// handler if any of the registered handles become ready during that
-    /// time.
-    pub fn run_once(&mut self) -> io::Result<()> {
-        // self.selector.do_select1(self, 0);
-        let size = try!(Selector::do_select(self, 0)) as usize;
-
-        // let size = try!(self.selector.select(&mut self.evts, 0)) as usize;
-        let evts: Vec<EventEntry> = self.evts.drain(..).collect();
-        // for evt in evts {
-        //     if let Some(mut ev) = self.event_maps.remove(&evt.ev_fd) {
-        //         let is_over = match ev.callback(self, evt.ev_events) {
-        //             RetValue::OVER => true,
-        //             _ => !ev.ev_events.contains(FLAG_PERSIST),
-        //         };
-        //         if is_over {
-        //             self.del_event(ev.ev_fd, ev.ev_events);
-        //         } else {
-        //             self.event_maps.insert(ev.ev_fd, ev);
-        //         }
-        //     }
-        // }
-
+    /// 进行一次的数据处理, 处理包括处理sockets信息, 及处理定时器的信息
+    pub fn run_once(&mut self) -> io::Result<bool> {
+        let timeout_ms = self.config.io_poll_timeout_ms;
+        let size = Selector::do_select(self, timeout_ms)?;
         let is_op = self.timer_process();
-        // nothing todo in this loop, we will sleep 1millis
-        if size == 0 && !is_op {
-            ::std::thread::sleep(::std::time::Duration::from_millis(1));
-        }
-        Ok(())
+        Ok(size != 0 || !is_op)
     }
 
+    /// 根据socket构造EventBuffer
     pub fn new_buff(&self, socket: TcpSocket) -> EventBuffer {
         EventBuffer::new(socket, self.config.buffer_capacity)
     }
@@ -177,39 +156,37 @@ impl EventLoop {
         Ok(())
     }
 
-    pub fn send_socket(&mut self, ev_fd: &SOCKET, data: &[u8]) -> io::Result<()> {
-        let _ = Selector::send_socket(self, ev_fd, data);
-        Ok(())
+    /// 向指定socket发送数据, 返回发送的数据长度
+    pub fn send_socket(&mut self, ev_fd: &SOCKET, data: &[u8]) -> io::Result<usize> {
+        Selector::send_socket(self, ev_fd, data)
     }
 
     /// 添加定时器, ev_fd为socket的句柄id, ev_events为监听读, 写, 持久的信息
     pub fn add_new_event(
         &mut self,
-        ev_fd: SOCKET,
+        socket: TcpSocket,
         ev_events: EventFlags,
         event: Option<EventCb>,
         error: Option<EndCb>,
         data: Option<Box<Any>>,
-    ) {
-        self.add_event(EventEntry::new_event(ev_fd, ev_events, event, error, data))
+    ) -> io::Result<()> {
+        let ev_fd = socket.as_raw_socket();
+        let buffer = self.new_buff(socket);
+        self.register_socket(buffer, EventEntry::new_event(ev_fd, ev_events, event, error, data))
     }
 
     /// 添加定时器, ev_fd为socket的句柄id, ev_events为监听读, 写, 持久的信息
     pub fn add_new_accept(
         &mut self,
-        ev_fd: SOCKET,
+        socket: TcpSocket,
         ev_events: EventFlags,
         accept: Option<AcceptCb>,
         error: Option<EndCb>,
         data: Option<Box<Any>>,
-    ) {
-        self.add_event(EventEntry::new_accept(
-            ev_fd,
-            ev_events,
-            accept,
-            error,
-            data,
-        ))
+    ) -> io::Result<()> {
+        let ev_fd = socket.as_raw_socket();
+        let buffer = self.new_buff(socket);
+        self.register_socket(buffer, EventEntry::new_accept(ev_fd, ev_events, accept, error, data))
     }
 
     /// 定时器的处理处理
