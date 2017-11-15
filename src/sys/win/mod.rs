@@ -12,7 +12,7 @@ extern crate rand;
 
 pub mod selector;
 pub use self::selector::Selector;
-pub use self::from_raw_arc::FromRawArc;
+pub use super::FromRawArc;
 
 use std::cmp;
 use std::io;
@@ -25,7 +25,6 @@ mod overlapped;
 
 pub mod iocp;
 pub mod net;
-pub mod from_raw_arc;
 
 pub use self::overlapped::Overlapped;
 pub use self::net::{TcpSocketExt, AcceptAddrsBuf};

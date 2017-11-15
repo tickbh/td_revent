@@ -47,8 +47,20 @@ impl Event {
         self.entry.ev_events.contains(FLAG_ACCEPT)
     }
 
-    pub fn get_event_socket(&self) -> SOCKET {
+    pub fn as_raw_socket(&self) -> SOCKET {
         self.buffer.socket.as_raw_socket()
+    }
+
+    pub fn new(buffer: EventBuffer, entry: EventEntry) -> Event {
+        Event {
+            buffer: buffer,
+            entry: entry,
+            read: CbOverlapped::new(read_done),
+            write: CbOverlapped::new(write_done),
+            accept_socket: None,
+            accept_buf: Some(AcceptAddrsBuf::new()),
+            is_end: false,
+        }
     }
 }
 
@@ -131,15 +143,15 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
         };
         match ret {
             RetValue::OVER => {
-                event_loop.unregister_socket(event.get_event_socket(), EventFlags::all());
+                event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
             }
             _ => {
                 if let Err(err) = event_loop.selector.post_accept_event(
-                    event.get_event_socket(),
+                    event.as_raw_socket(),
                 )
                 {
                     event.buffer.error = Err(err);
-                    event_loop.unregister_socket(event.get_event_socket(), EventFlags::all());
+                    event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
                 }
             }
         }
@@ -172,12 +184,12 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
             );
         }
         let res = event_loop.selector.post_read_event(
-            &event.get_event_socket(),
+            &event.as_raw_socket(),
         );
         if event.buffer.has_read_buffer() {
             match event.entry.EventCb(event_loop, &mut event_clone.buffer) {
                 RetValue::OVER => {
-                    event_loop.unregister_socket(event.get_event_socket(), EventFlags::all());
+                    event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
                     return;
                 }
                 _ => (),
@@ -185,7 +197,7 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
         }
         if res.is_err() {
             event.buffer.error = res;
-            event_loop.unregister_socket(event.get_event_socket(), EventFlags::all());
+            event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
         }
     }
 }
@@ -200,20 +212,6 @@ fn write_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
         &event.buffer.as_raw_socket(),
         None,
     );
-}
-
-impl Event {
-    pub fn new(buffer: EventBuffer, entry: EventEntry) -> Event {
-        Event {
-            buffer: buffer,
-            entry: entry,
-            read: CbOverlapped::new(read_done),
-            write: CbOverlapped::new(write_done),
-            accept_socket: None,
-            accept_buf: Some(AcceptAddrsBuf::new()),
-            is_end: false,
-        }
-    }
 }
 
 pub struct Selector {

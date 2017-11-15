@@ -23,6 +23,10 @@ pub trait AsFd {
     fn as_fd(&self) -> i32;
 }
 
+mod from_raw_arc;
+
+pub use self::from_raw_arc::FromRawArc;
+
 #[cfg(unix)]
 impl<T: AsRawFd> AsFd for T {
     fn as_fd(&self) -> i32 {

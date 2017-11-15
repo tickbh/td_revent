@@ -3,7 +3,6 @@ use std::ptr;
 use std::fmt;
 use std::cmp;
 use psocket::{self, TcpSocket};
-use winapi::*;
 
 pub struct Buffer {
     val: Vec<u8>,
