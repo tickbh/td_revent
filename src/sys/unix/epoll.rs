@@ -98,7 +98,7 @@ fn read_done(event_loop: &mut EventLoop, socket: SOCKET) {
                 );
 
                 if event.buffer.has_read_buffer() {
-                    match event.entry.EventCb(event_loop, &mut event_clone.buffer) {
+                    match event.entry.event_cb(event_loop, &mut event_clone.buffer) {
                         RetValue::OVER => {
                             event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
                             return;

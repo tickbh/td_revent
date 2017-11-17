@@ -1,6 +1,6 @@
 use EventEntry;
 use std::fmt;
-use std::cmp::{self, Ord, Ordering};
+use std::cmp::{Ord, Ordering};
 use std::collections::HashMap;
 use rbtree::RBTree;
 
@@ -65,6 +65,20 @@ impl Timer {
         time_id
     }
 
+    // ID = 0 为无效ID
+    pub fn add_first_timer(&mut self, mut entry: EventEntry) -> u32 {
+        if entry.time_id == 0 {
+            entry.time_id = self.calc_new_id();
+        };
+        let time_id = entry.time_id;
+        self.time_maps.insert(time_id, entry.tick_ms);
+        self.timer_queue.insert(
+            TreeKey(entry.tick_ms, time_id),
+            entry,
+        );
+        time_id
+    }
+
     pub fn del_timer(&mut self, time_id: u32) -> Option<EventEntry> {
         if !self.time_maps.contains_key(&time_id) {
             return None;
@@ -96,7 +110,9 @@ impl Timer {
     fn calc_new_id(&mut self) -> u32 {
         loop {
             self.time_id = self.time_id.overflowing_add(1).0;
-            self.time_id = cmp::max(self.time_id, 1);
+            if self.time_id > self.time_max_id {
+                self.time_id = 1;
+            }
             if self.time_maps.contains_key(&self.time_id) {
                 continue;
             }

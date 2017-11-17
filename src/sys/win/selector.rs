@@ -10,9 +10,7 @@ use sys::win::iocp::{CompletionPort, CompletionStatus};
 use sys::win::{FromRawArc, Overlapped};
 use super::{TcpSocketExt, AcceptAddrsBuf};
 use psocket::{TcpSocket, SocketAddr};
-use winapi;
 use winapi::*;
-use kernel32;
 use std::io::prelude::*;
 
 
@@ -143,7 +141,7 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
         };
         match ret {
             RetValue::OVER => {
-                event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
+                let _ = event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
             }
             _ => {
                 if let Err(err) = event_loop.selector.post_accept_event(
@@ -151,16 +149,15 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
                 )
                 {
                     event.buffer.error = Err(err);
-                    event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
+                    let _ = event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
                 }
             }
         }
         return;
     } else {
-        let mut bytes_transferred = status.bytes_transferred() as usize;
-        println!("read_callback!!!!!!! read size = {:?}", bytes_transferred);
+        let bytes_transferred = status.bytes_transferred() as usize;
         if status.flag().contains(FLAG_ENDED) {
-            Selector::_unregister_socket(
+            let _ = Selector::_unregister_socket(
                 event_loop,
                 event.buffer.as_raw_socket(),
                 EventFlags::all(),
@@ -169,7 +166,7 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
         }
 
         if bytes_transferred == 0 {
-            Selector::unregister_socket(
+            let _ = Selector::unregister_socket(
                 event_loop,
                 event.buffer.as_raw_socket(),
                 EventFlags::all(),
@@ -187,9 +184,9 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
             &event.as_raw_socket(),
         );
         if event.buffer.has_read_buffer() {
-            match event.entry.EventCb(event_loop, &mut event_clone.buffer) {
+            match event.entry.event_cb(event_loop, &mut event_clone.buffer) {
                 RetValue::OVER => {
-                    event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
+                    let _ = event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
                     return;
                 }
                 _ => (),
@@ -197,7 +194,7 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
         }
         if res.is_err() {
             event.buffer.error = res;
-            event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
+            let _ = event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
         }
     }
 }
@@ -206,9 +203,7 @@ fn write_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
     let status = CompletionStatus::from_entry(status);
     let mut event = overlapped2arc!(status.overlapped(), Event, write);
     event.buffer.is_in_write = false;
-
-    println!("write_done = {:?}", event.buffer.as_raw_socket());
-    event_loop.selector.post_write_event(
+    let _ = event_loop.selector.post_write_event(
         &event.buffer.as_raw_socket(),
         None,
     );
@@ -303,7 +298,7 @@ impl Selector {
         if let Some(ev) = self.event_maps.get_mut(&socket) {
             let event = &mut (*ev.clone().inner);
             if data.is_some() {
-                event.buffer.write.write(data.unwrap());
+                event.buffer.write.write(data.unwrap())?;
             }
             if event.buffer.is_in_write || event.buffer.write.empty() || event.is_end {
                 return Ok(0);

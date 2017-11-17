@@ -91,18 +91,9 @@ impl Read for Buffer {
 
 impl Write for Buffer {
     fn write(&mut self, buf: &[u8]) -> Result<usize> {
-        println!(
-            "self val len = {:?} self.wpos = {:?}",
-            self.val.len(),
-            self.wpos
-        );
-        println!("buf.len() = {:?}", buf.len());
         if self.val.len() < self.wpos + buf.len() {
-            println!("fffffff");
             self.val.resize(self.wpos + buf.len(), 0);
-            println!("kkkkkkkkkkkk");
         }
-        println!("111 self val len = {:?}", self.val.len());
         if buf.len() == 0 {
             return Ok(buf.len());
         }
@@ -146,11 +137,5 @@ impl EventBuffer {
 
     pub fn has_read_buffer(&self) -> bool {
         !self.read.empty()
-    }
-}
-
-impl Drop for EventBuffer {
-    fn drop(&mut self) {
-        println!("drop EventBuffer ============ {:?}", self.as_raw_socket());
     }
 }

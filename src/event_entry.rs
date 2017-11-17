@@ -59,6 +59,26 @@ impl EventEntry {
         }
     }
 
+    /// tick_step is us
+    pub fn new_timer_at(
+        tick_time: u64,
+        timer: Option<TimerCb>,
+        data: Option<Box<Any>>,
+    ) -> EventEntry {
+        EventEntry {
+            tick_ms: tick_time,
+            tick_step: 0,
+            ev_events: FLAG_TIMEOUT,
+            accept: None,
+            event: None,
+            end: None,
+            timer: timer,
+            data: data,
+            time_id: 0,
+            ev_fd: INVALID_SOCKET,
+        }
+    }
+
     pub fn new_event(
         ev_fd: SOCKET,
         ev_events: EventFlags,
@@ -124,7 +144,7 @@ impl EventEntry {
         self.accept.unwrap()(ev, tcp, self.data.as_mut())
     }
 
-    pub fn EventCb(&mut self, ev: &mut EventLoop, event: &mut EventBuffer) -> RetValue {
+    pub fn event_cb(&mut self, ev: &mut EventLoop, event: &mut EventBuffer) -> RetValue {
         if self.event.is_none() {
             return RetValue::OK;
         }
@@ -132,7 +152,7 @@ impl EventEntry {
         self.event.unwrap()(ev, event, self.data.as_mut())
     }
 
-    pub fn TimerCb(&mut self, ev: &mut EventLoop, timer: u32) -> RetValue {
+    pub fn timer_cb(&mut self, ev: &mut EventLoop, timer: u32) -> RetValue {
         if self.timer.is_none() {
             return RetValue::OK;
         }
@@ -141,7 +161,6 @@ impl EventEntry {
     }
 
     pub fn end_cb(&mut self, ev: &mut EventLoop, event: &mut EventBuffer) {
-        println!("end_cb = {:?}", self.end.is_none());
         if self.end.is_none() {
             return;
         }

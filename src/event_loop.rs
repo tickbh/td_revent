@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 use {Timer, EventEntry};
 use sys::Selector;
-use std::collections::HashMap;
 use {EventFlags, FLAG_PERSIST, EventBuffer, TimerCb, AcceptCb, EventCb, EndCb};
 use std::io;
 use std::any::Any;
@@ -125,9 +124,23 @@ impl EventLoop {
         timer_cb: Option<TimerCb>,
         data: Option<Box<Any>>,
     ) -> u32 {
-        self.timer.add_timer(EventEntry::new_timer(
+        self.timer.add_first_timer(EventEntry::new_timer(
             tick_step,
             tick_repeat,
+            timer_cb,
+            data,
+        ))
+    }
+
+    /// 添加定时器,  tick_time指定某一时间添加触发定时器
+    pub fn add_new_timer_at(
+        &mut self,
+        tick_time: u64,
+        timer_cb: Option<TimerCb>,
+        data: Option<Box<Any>>,
+    ) -> u32 {
+        self.timer.add_first_timer(EventEntry::new_timer_at(
+            tick_time,
             timer_cb,
             data,
         ))
@@ -136,12 +149,6 @@ impl EventLoop {
     /// 删除指定的定时器id, 定时器内部实现细节为红黑树, 删除定时器的时间为O(logn), 如果存在该定时器, 则返回相关的定时器信息
     pub fn del_timer(&mut self, time_id: u32) -> Option<EventEntry> {
         self.timer.del_timer(time_id)
-    }
-
-    /// 添加定时器
-    pub fn add_event(&mut self, entry: EventEntry) {
-        // let _ = self.selector.register(entry.ev_fd, entry.ev_events);
-        // self.event_maps.insert(entry.ev_fd, entry);
     }
 
     /// 添加socket监听
@@ -200,7 +207,7 @@ impl EventLoop {
                 Some(mut entry) => {
                     is_op = true;
                     let time_id = entry.time_id;
-                    let is_over = match entry.TimerCb(self, time_id) {
+                    let is_over = match entry.timer_cb(self, time_id) {
                         RetValue::OVER => true,
                         _ => !entry.ev_events.contains(FLAG_PERSIST),
                     };

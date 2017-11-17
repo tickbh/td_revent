@@ -2,14 +2,13 @@ use td_revent::*;
 use std::fmt;
 use std::any::Any;
 
-static mut S_COUNT: i32 = 0;
-static mut S_DEL_TIMER: i32 = 0;
+static mut S_COUNT: u32 = 0;
+static mut S_DEL_TIMER: u32 = 0;
 
 //timer return no success(0) will no be repeat
 fn time_callback(
     ev: &mut EventLoop,
-    fd: i32,
-    _: EventFlags,
+    timer: u32,
     data: Option<&mut Box<Any>>,
 ) -> RetValue {
     if data.is_none() {
@@ -27,7 +26,7 @@ fn time_callback(
         println!("callback {:?}", obj);
     }
 
-    if unsafe { S_DEL_TIMER == fd } {
+    if unsafe { S_DEL_TIMER == timer } {
         return RetValue::OVER;
     }
     RetValue::OK

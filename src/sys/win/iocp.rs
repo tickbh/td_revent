@@ -1,4 +1,5 @@
 //! Bindings to IOCP, I/O Completion Ports
+#![allow(dead_code)]
 
 use std::cmp;
 use std::io;
@@ -154,7 +155,6 @@ impl CompletionPort {
             )
         };
 
-        // println!("max len = {:?} cur read len = {:?} ret = {:?}", len, removed, ret);
         match super::cvt(ret) {
             Ok(_) => Ok(&mut list[..removed as usize]),
             Err(e) => Err(e),
@@ -271,66 +271,5 @@ impl CompletionStatus {
     /// Returns a pointer to the internal `OVERLAPPED_ENTRY` object.
     pub fn entry(&self) -> &OVERLAPPED_ENTRY {
         &self.0
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::mem;
-    use std::time::Duration;
-
-    use winapi::*;
-
-    use iocp::{CompletionPort, CompletionStatus};
-
-    #[test]
-    fn is_send_sync() {
-        fn is_send_sync<T: Send + Sync>() {}
-        is_send_sync::<CompletionPort>();
-    }
-
-    #[test]
-    fn flag_right_size() {
-        assert_eq!(mem::size_of::<EventFlags>(), mem::size_of::<ULONG_PTR>());
-    }
-
-    #[test]
-    fn timeout() {
-        let c = CompletionPort::new(1).unwrap();
-        let err = c.get(Some(Duration::from_millis(1))).unwrap_err();
-        assert_eq!(err.raw_os_error(), Some(WAIT_TIMEOUT as i32));
-    }
-
-    #[test]
-    fn get() {
-        let c = CompletionPort::new(1).unwrap();
-        c.post(CompletionStatus::new(1, 2, 3 as *mut _)).unwrap();
-        let s = c.get(None).unwrap();
-        assert_eq!(s.bytes_transferred(), 1);
-        assert_eq!(s.flag(), 2);
-        assert_eq!(s.overlapped(), 3 as *mut _);
-    }
-
-    #[test]
-    fn get_many() {
-        let c = CompletionPort::new(1).unwrap();
-
-        c.post(CompletionStatus::new(1, 2, 3 as *mut _)).unwrap();
-        c.post(CompletionStatus::new(4, 5, 6 as *mut _)).unwrap();
-
-        let mut s = vec![CompletionStatus::zero(); 4];
-        {
-            let s = c.get_many(&mut s, None).unwrap();
-            assert_eq!(s.len(), 2);
-            assert_eq!(s[0].bytes_transferred(), 1);
-            assert_eq!(s[0].token(), 2);
-            assert_eq!(s[0].overlapped(), 3 as *mut _);
-            assert_eq!(s[1].bytes_transferred(), 4);
-            assert_eq!(s[1].token(), 5);
-            assert_eq!(s[1].overlapped(), 6 as *mut _);
-        }
-        assert_eq!(s[2].bytes_transferred(), 0);
-        assert_eq!(s[2].token(), 0);
-        assert_eq!(s[2].overlapped(), 0 as *mut _);
     }
 }
