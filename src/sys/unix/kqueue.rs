@@ -1,28 +1,218 @@
-use nix::unistd::close;
-// use nix::sys::event::{EventFilter, EventFlag, FilterFlag, KEvent, kqueue, kevent, kevent_ts};
-// use nix::sys::event::{EV_ADD, EV_CLEAR, EV_DELETE, EV_DISABLE, EV_ENABLE, EV_EOF, EV_ERROR, EV_ONESHOT};
-use nix::sys::event::*;
-use libc::{timespec, time_t, c_long};
-use std::{fmt, slice};
-use std::io;
+#![allow(dead_code)]
 use std::os::unix::io::RawFd;
-use {EventEntry, EventFlags, FLAG_READ, FLAG_WRITE};
+use std::io::{self, ErrorKind};
+use {EventEntry, EventFlags, FLAG_READ, FLAG_WRITE, FLAG_ACCEPT, EventBuffer, EventLoop, RetValue};
 
-#[derive(Debug)]
+use libc::{timespec, time_t, c_long};
+
+use std::collections::HashMap;
+use psocket::SOCKET;
+use std::{fmt, slice};
+
+use nix::unistd::close;
+use nix::sys::event::*;
+use std::io::prelude::*;
+
+use super::FromRawArc;
+
 pub struct Selector {
     kq: RawFd,
     evts: Events,
+    event_maps: HashMap<SOCKET, EventImpl>,
 }
 
+pub struct Event {
+    pub buffer: EventBuffer,
+    pub entry: EventEntry,
+    pub is_end: bool,
+}
+
+#[derive(Clone)]
+pub struct EventImpl {
+    pub inner: FromRawArc<Event>,
+}
+
+impl EventImpl {
+    pub fn new(event: Event) -> EventImpl {
+        EventImpl { inner: FromRawArc::new(event) }
+    }
+}
+
+impl Event {
+    pub fn new(buffer: EventBuffer, entry: EventEntry) -> Event {
+        Event {
+            buffer: buffer,
+            entry: entry,
+            is_end: false,
+        }
+    }
+
+    pub fn is_accept(&self) -> bool {
+        self.entry.ev_events.contains(FLAG_ACCEPT)
+    }
+
+    pub fn as_raw_socket(&self) -> SOCKET {
+        self.buffer.socket.as_raw_socket()
+    }
+}
+
+fn read_done(event_loop: &mut EventLoop, socket: SOCKET) {
+    if !event_loop.selector.event_maps.contains_key(&socket) {
+        return;
+    }
+    let mut event = event_loop.selector.event_maps.get_mut(&socket).map(|e| e.clone()).unwrap();
+    let event_clone = &mut (*event.clone().inner);
+    let event = &mut (*event.inner);
+    if event.is_accept() {
+        let ret = match event.buffer.socket.accept() {
+            Ok((mut socket, addr)) => {
+                socket.set_peer_addr(addr);
+                event.entry.accept_cb(event_loop, Ok(socket))
+            },
+            Err(e) => {
+                event.entry.accept_cb(event_loop, Err(e))
+            }
+        };
+
+        match ret {
+            RetValue::OVER => {
+                let _ = event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
+            }
+            _ => {
+                ;
+            }
+        }
+    } else {
+        match event.buffer.socket.read(&mut event.buffer.read_cache[..]) {
+            Ok(len) => {
+                if len <= 0 {
+                    let _ = Selector::unregister_socket(
+                        event_loop,
+                        event.buffer.as_raw_socket(),
+                        EventFlags::all(),
+                    );
+                    return;
+                }
+
+                let _ = event.buffer.read.write(
+                    &event.buffer.read_cache
+                        [..len],
+                );
+
+                if event.buffer.has_read_buffer() {
+                    match event.entry.event_cb(event_loop, &mut event_clone.buffer) {
+                        RetValue::OVER => {
+                            let _ = event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
+                            return;
+                        }
+                        _ => (),
+                    }
+                }
+            },
+            Err(err) => {
+                event.buffer.error = Err(err);
+                let _ = Selector::unregister_socket(
+                    event_loop,
+                    event.buffer.as_raw_socket(),
+                    EventFlags::all(),
+                );
+            },
+        };
+    }
+}
+
+fn write_done(event_loop: &mut EventLoop, socket: SOCKET) {
+    if !event_loop.selector.event_maps.contains_key(&socket) {
+        return;
+    }
+    let mut event = event_loop.selector.event_maps.get_mut(&socket).map(|e| e.clone()).unwrap();
+    let event = &mut (*event.inner);
+    // 无需写入, 则取消写入事件
+    if event.buffer.write.len() == 0 {
+        event.buffer.is_in_write = false;
+        event.entry.ev_events.remove(FLAG_WRITE);
+        let _ = event_loop.selector.deregister(event.as_raw_socket(), FLAG_WRITE);
+        return;
+    }
+    match event.buffer.socket.write(&event.buffer.write.get_data()[..]) {
+        Ok(len) => {
+            if len <= 0 {
+                let _ = Selector::unregister_socket(
+                    event_loop,
+                    event.buffer.as_raw_socket(),
+                    EventFlags::all(),
+                );
+                return;
+            }
+            event.buffer.write.drain(len);
+            //如果写入包为空, 则表示没有数据要进行写入, 取消掉写入事件
+            if event.buffer.write.empty() {
+                event.buffer.is_in_write = false;
+                event.entry.ev_events.remove(FLAG_WRITE);
+                let _ = event_loop.selector.deregister(event.as_raw_socket(), FLAG_WRITE);
+            }
+        },
+        Err(err) => {
+            event.buffer.error = Err(err);
+            let _ = Selector::unregister_socket(
+                event_loop,
+                event.buffer.as_raw_socket(),
+                EventFlags::all(),
+            );
+        },
+    }
+}
+
+
 impl Selector {
-    pub fn new() -> io::Result<Selector> {
+    pub fn new(capacity: usize) -> io::Result<Selector> {
         let kq = try!(kqueue().map_err(super::from_nix_error));
 
         Ok(Selector {
             kq: kq,
-            evts: Events::new(),
+            evts: Events::new(capacity),
+            event_maps: HashMap::new(),
         })
     }
+
+
+    /// 获取当前可执行的事件, 并同时处理数据, 返回执行的个数
+    pub fn do_select(event: &mut EventLoop, timeout: usize) -> io::Result<usize> {
+
+        use std::isize;
+
+        let timeout_ms = if timeout as isize >= isize::MAX {
+            isize::MAX
+        } else {
+            timeout as isize
+        };
+
+        let timeout = timespec {
+            tv_sec: (timeout_ms / 1000) as time_t,
+            tv_nsec: ((timeout_ms % 1000) * 1_000_000) as c_long,
+        };
+
+        let cnt = try!(
+            kevent_ts(event.selector.kq, &[], event.selector.evts.as_mut_slice(), Some(timeout))
+                .map_err(super::from_nix_error)
+        );
+        unsafe {
+            event.selector.evts.sys_events.set_len(cnt);
+        }
+
+        for i in 0..cnt {
+            let e = event.selector.evts.sys_events[i];
+            if e.filter == EventFilter::EVFILT_READ {
+                read_done(event, e.ident as SOCKET);
+            }
+            if e.filter == EventFilter::EVFILT_WRITE {
+                write_done(event, e.ident as SOCKET);
+            }
+        }
+        Ok(cnt)
+    }
+
+
 
     pub fn select(&mut self, evts: &mut Vec<EventEntry>, timeout_ms: u32) -> io::Result<u32> {
         use std::isize;
@@ -62,29 +252,6 @@ impl Selector {
         Ok(cnt as u32)
     }
 
-    pub fn register(&mut self, fd: i32, ev_events: EventFlags) -> io::Result<()> {
-
-        self.ev_register(
-            fd as RawFd,
-            EventFilter::EVFILT_READ,
-            ev_events.contains(FLAG_READ),
-        );
-        self.ev_register(
-            fd as RawFd,
-            EventFilter::EVFILT_WRITE,
-            ev_events.contains(FLAG_WRITE),
-        );
-
-        self.flush_changes()
-    }
-
-    pub fn deregister(&mut self, fd: i32, _ev_events: EventFlags) -> io::Result<()> {
-        self.ev_push(fd as RawFd, EventFilter::EVFILT_READ, EV_DELETE);
-        self.ev_push(fd as RawFd, EventFilter::EVFILT_WRITE, EV_DELETE);
-        self.flush_changes()
-    }
-
-
     fn ev_register(&mut self, fd: RawFd, filter: EventFilter, enable: bool) {
         let mut flags = EV_ADD;
         if enable {
@@ -116,6 +283,99 @@ impl Selector {
         self.evts.sys_events.clear();
         result
     }
+
+    fn register(&mut self, socket: SOCKET, ev_events: EventFlags) -> io::Result<()> {
+        if ev_events.contains(FLAG_READ) {
+            self.ev_register(
+                socket as RawFd,
+                EventFilter::EVFILT_READ,
+                true,
+            );
+        }  
+
+        if ev_events.contains(FLAG_WRITE) {
+            self.ev_register(
+                socket as RawFd,
+                EventFilter::EVFILT_WRITE,
+                true,
+            );
+        }
+        self.flush_changes()
+    }
+
+
+    fn deregister(&mut self, socket: SOCKET, ev_events: EventFlags) -> io::Result<()> {
+        if ev_events.contains(FLAG_READ) {
+            self.ev_push(socket as RawFd, EventFilter::EVFILT_READ, EV_DELETE);
+        }
+        if ev_events.contains(FLAG_WRITE) {
+            self.ev_push(socket as RawFd, EventFilter::EVFILT_WRITE, EV_DELETE);
+        }
+        self.flush_changes()
+    }
+
+
+    /// 注册socket事件, 把socket加入到iocp的监听中, 如果监听错误, 则移除相关的资源
+    pub fn register_socket(
+        event_loop: &mut EventLoop,
+        buffer: EventBuffer,
+        entry: EventEntry,
+    ) -> io::Result<()> {
+        let selector = &mut event_loop.selector;
+        let socket = buffer.as_raw_socket();
+
+        if selector.event_maps.contains_key(&socket) {
+            selector.event_maps.remove(&socket);
+        }
+
+        let events = entry.ev_events.clone();
+        let event = Event::new(buffer, entry);
+        selector.event_maps.insert(socket, EventImpl::new(event));
+
+        if let Err(e) = selector.register(socket as RawFd, events) {
+            selector.event_maps.remove(&socket);
+            return Err(e);
+        }
+        Ok(())
+    }
+
+
+    /// 取消某个socket的监听, iocp模式下flags参数无效
+    pub fn unregister_socket(
+        event_loop: &mut EventLoop,
+        socket: SOCKET,
+        _flags: EventFlags,
+    ) -> io::Result<()> {
+        if let Some(mut event) = event_loop.selector.event_maps.remove(&socket) {
+            let event_clone = &mut (*event.clone().inner);
+            let event = &mut (*event.inner);
+            event.entry.end_cb(event_loop, &mut event_clone.buffer);
+        }
+        let _ = event_loop.selector.deregister(socket, EventFlags::all())?;
+        
+        Ok(())
+    }
+
+    // 给指定的socket发送数据, 如果不能一次发送完毕则会写入到缓存中, 等待下次继续发送
+    // 返回值为指定的当次的写入大小, 如果没有全部写完数据, 则下次写入先写到缓冲中, 等待系统的可写通知
+    pub fn send_socket(event_loop: &mut EventLoop, socket: &SOCKET, data: &[u8]) -> io::Result<usize> {
+        if !event_loop.selector.event_maps.contains_key(&socket) {
+            return Err(io::Error::new(
+                ErrorKind::Other,
+                "the socket already be remove",
+            ));
+        }
+        let mut event = event_loop.selector.event_maps.get_mut(&socket).map(|e| e.clone()).unwrap();
+        let event = &mut (*event.inner);
+        event.buffer.write.write(data)?;
+        if event.buffer.is_in_write || event.buffer.write.empty() {
+            return Ok(0);
+        }
+        event.entry.ev_events.insert(FLAG_WRITE);
+        event.buffer.is_in_write = true;
+        event_loop.selector.register(event.as_raw_socket(), FLAG_WRITE)?;
+        Ok(0)
+    }
 }
 
 impl Drop for Selector {
@@ -129,8 +389,8 @@ pub struct Events {
 }
 
 impl Events {
-    pub fn new() -> Events {
-        Events { sys_events: Vec::with_capacity(1024) }
+    pub fn new(capacity: usize) -> Events {
+        Events { sys_events: Vec::with_capacity(capacity) }
     }
 
     fn as_slice(&self) -> &[KEvent] {

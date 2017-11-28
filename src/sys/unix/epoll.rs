@@ -356,16 +356,12 @@ impl Selector {
         let mut event = event_loop.selector.event_maps.get_mut(&socket).map(|e| e.clone()).unwrap();
         let event = &mut (*event.inner);
         event.buffer.write.write(data);
-        println!("aaaaaaaaaaaaaaaa");
         if event.buffer.is_in_write || event.buffer.write.empty() {
             return Ok(0);
         }
-        println!("bbbbbbbbbbbbbbbbbbbb");
         event.entry.ev_events.insert(FLAG_WRITE);
         event.buffer.is_in_write = true;
         let err = event_loop.selector.modregister(event.as_raw_socket(), event.entry.ev_events);
-        println!("err = {:?}", err);
-        println!("register write info = {:?}", socket);
         Ok(0)
     }
 
