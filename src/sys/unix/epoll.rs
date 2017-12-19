@@ -317,36 +317,16 @@ impl Selector {
         if let Some(mut event) = event_loop.selector.event_maps.remove(&socket) {
             let event_clone = &mut (*event.clone().inner);
             let event = &mut (*event.inner);
+            event_clone.buffer.socket.close();
             event.entry.end_cb(event_loop, &mut event_clone.buffer);
         }
         let _ = event_loop.selector.deregister(socket, flags)?;
-        
-        
-        // let info = EpollEvent {
-        //     events: ioevent_to_epoll(_flags),
-        //     data: 0,
-        // };
-
-        // match epoll_ctl(event_loop.selector.epfd, EpollOp::EpollCtlDel, socket as RawFd, &info)
-        //     .map_err(super::from_nix_error) {
-        //         Err(e) => {
-        //             return Err(e);
-        //         }
-        //         Ok(_) => {
-        //             if let Some(mut event) = event_loop.selector.event_maps.remove(&socket) {
-        //                 let event_clone = &mut (*event.clone().inner);
-        //                 let event = &mut (*event.inner);
-        //                 event.entry.end_cb(event_loop, &mut event_clone.buffer);
-        //             }
-        //         }
-        //     }
         Ok(())
     }
 
     // 给指定的socket发送数据, 如果不能一次发送完毕则会写入到缓存中, 等待下次继续发送
     // 返回值为指定的当次的写入大小, 如果没有全部写完数据, 则下次写入先写到缓冲中, 等待系统的可写通知
     pub fn send_socket(event_loop: &mut EventLoop, socket: &SOCKET, data: &[u8]) -> io::Result<usize> {
-        println!("send socket !!!!!!!!!!!! socket = {:?}", socket);
         if !event_loop.selector.event_maps.contains_key(&socket) {
             return Err(io::Error::new(
                 ErrorKind::Other,

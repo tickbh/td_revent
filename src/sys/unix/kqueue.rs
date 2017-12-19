@@ -349,6 +349,7 @@ impl Selector {
         if let Some(mut event) = event_loop.selector.event_maps.remove(&socket) {
             let event_clone = &mut (*event.clone().inner);
             let event = &mut (*event.inner);
+            event_clone.buffer.socket.close();
             event.entry.end_cb(event_loop, &mut event_clone.buffer);
         }
         let _ = event_loop.selector.deregister(socket, EventFlags::all())?;

@@ -6,6 +6,8 @@ use std::io;
 use std::any::Any;
 use psocket::{TcpSocket, SOCKET};
 
+///回调的函数返回值, 如果返回OK和CONTINUE, 则默认处理
+///如果返回OVER则主动结束循环, 比如READ则停止READ, 定时器如果是循环的则主动停止当前的定时器 
 pub enum RetValue {
     OK,
     CONTINUE,
