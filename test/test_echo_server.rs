@@ -68,11 +68,11 @@ fn server_read_callback(ev : &mut EventLoop, _fd : i32, _ : EventFlags, data : O
 fn accept_callback(ev : &mut EventLoop, _fd : i32, _ : EventFlags, data : Option<&mut Box<Any>>) -> RetValue {
     let listener = any_to_mut!(data, TcpSocket);
 
-    let (mut new_socket, new_attr) = listener.accept().unwrap();
+    let (new_socket, new_attr) = listener.accept().unwrap();
     let _ = new_socket.set_nonblocking(true);
 
     println!("{:?} attr is {:?}", new_socket, new_attr);
-    ev.add_new_event(new_socket.get_socket_fd(), FLAG_READ | FLAG_PERSIST, Some(server_read_callback), Some(Box::new(new_socket)));
+    ev.add_new_event(new_socket.as_raw_socket(), FLAG_READ | FLAG_PERSIST, Some(server_read_callback), Some(Box::new(new_socket)));
     RetValue::OK
 }
 
@@ -82,15 +82,15 @@ pub fn test_echo_server() {
     let mut event_loop = EventLoop::new().unwrap();
 
     let addr = "127.0.0.1:10090";
-    let mut listener = TcpSocket::bind(&addr).unwrap();
+    let listener = TcpSocket::bind(&addr).unwrap();
     let _ = listener.set_nonblocking(true);
-    event_loop.add_new_event(listener.get_socket_fd(), FLAG_READ | FLAG_PERSIST, Some(accept_callback), Some(Box::new(listener)));
+    event_loop.add_new_event(listener.as_raw_socket(), FLAG_READ | FLAG_PERSIST, Some(accept_callback), Some(Box::new(listener)));
 
     let mut stream = TcpSocket::connect(&addr).unwrap();
     let _ = stream.set_nonblocking(true);
 
     stream.write(b"hello world").unwrap();
-    event_loop.add_new_event(stream.get_socket_fd(), FLAG_READ | FLAG_PERSIST, Some(client_read_callback), Some(Box::new(stream)));
+    event_loop.add_new_event(stream.as_raw_socket(), FLAG_READ | FLAG_PERSIST, Some(client_read_callback), Some(Box::new(stream)));
 
     // mem::forget(listener);
     // mem::forget(stream);
