@@ -47,7 +47,7 @@ impl Timer {
         time::precise_time_ns() / 1000
     }
 
-    // ID = 0 为无效ID
+    /// 添加定时器, 非定时器, 通常是重复定时器结束后进行的调用
     pub fn add_timer(&mut self, mut entry: EventEntry) -> u32 {
         if entry.tick_step == 0 {
             return 0;
@@ -65,11 +65,9 @@ impl Timer {
         time_id
     }
 
-    // ID = 0 为无效ID
+    /// 添加首次的定时器, 不用step校验, 如果是重复定时器, 则第二次添加到定时器被检验
     pub fn add_first_timer(&mut self, mut entry: EventEntry) -> u32 {
-        if entry.time_id == 0 {
-            entry.time_id = self.calc_new_id();
-        };
+        entry.time_id = self.calc_new_id();
         let time_id = entry.time_id;
         self.time_maps.insert(time_id, entry.tick_ms);
         self.timer_queue.insert(
@@ -79,6 +77,7 @@ impl Timer {
         time_id
     }
 
+    /// 根据定时器的id删除指定的定时器
     pub fn del_timer(&mut self, time_id: u32) -> Option<EventEntry> {
         if !self.time_maps.contains_key(&time_id) {
             return None;
@@ -88,6 +87,7 @@ impl Timer {
         self.timer_queue.remove(&key)
     }
 
+    /// 取出时间轴最小的一个值
     pub fn tick_first(&self) -> Option<u64> {
         self.timer_queue
             .get_first()
@@ -95,6 +95,7 @@ impl Timer {
             .unwrap_or(None)
     }
 
+    /// 判断到指定时间是否有小于该指定值的实例
     pub fn tick_time(&mut self, tm: u64) -> Option<EventEntry> {
         if tm < self.tick_first().unwrap_or(tm + 1) {
             return None;
@@ -107,6 +108,7 @@ impl Timer {
         }
     }
 
+    /// 取出不冲突新的定时器id, 如果和已分配的定时器id重复则继续寻找下一个
     fn calc_new_id(&mut self) -> u32 {
         loop {
             self.time_id = self.time_id.overflowing_add(1).0;

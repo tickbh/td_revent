@@ -213,16 +213,3 @@ impl Hash for EventEntry {
         (self.ev_fd).hash(state);
     }
 }
-
-// impl Drop for EventEntry {
-//     fn drop(&mut self) {
-//         use psocket::TcpSocket;
-//         if self.data.is_some() {
-//             let listener = self.data.as_ref().unwrap().downcast_ref::<TcpSocket>();
-//             println!("listener = {:?}", listener);
-//         } else {
-//             println!("data is none");
-//         }
-//         println!("drop the EventEntry!!! {:?}", self);
-//     }
-// }

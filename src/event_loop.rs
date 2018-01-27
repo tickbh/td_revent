@@ -19,10 +19,6 @@ pub enum RetValue {
 pub struct EventLoopConfig {
     pub io_poll_timeout_ms: usize,
 
-    // == Notifications ==
-    pub notify_capacity: usize,
-    pub messages_per_tick: usize,
-
     pub select_catacity: usize,
     pub buffer_capacity: usize,
 
@@ -34,8 +30,6 @@ impl Default for EventLoopConfig {
     fn default() -> EventLoopConfig {
         EventLoopConfig {
             io_poll_timeout_ms: 1,
-            notify_capacity: 4_096,
-            messages_per_tick: 256,
 
             select_catacity: 1024,
             buffer_capacity: 65_536,
@@ -51,8 +45,6 @@ pub struct EventLoop {
     timer: Timer,
     pub selector: Selector,
     config: EventLoopConfig,
-    evts: Vec<EventEntry>,
-    // event_maps: HashMap<i32, EventEntry>,
 }
 
 
@@ -69,7 +61,6 @@ impl EventLoop {
             timer: timer,
             selector: selector,
             config: config,
-            evts: vec![],
         })
     }
 
@@ -111,14 +102,14 @@ impl EventLoop {
         EventBuffer::new(socket, self.config.buffer_capacity)
     }
 
-    /// 添加定时器, 如果time_step为0,则添加定时器失败
+    /// 添加定时器, 如果time_step为0, 则添加定时器失败
     pub fn add_timer(&mut self, entry: EventEntry) -> u32 {
         self.timer.add_timer(entry)
     }
 
     /// 添加定时器,  tick_step变量表示每隔多少ms调用一次该回调
     /// tick_repeat变量表示该定时器是否重复, 如果为true, 则会每tick_step ms进行调用一次, 直到回调返回RetValue::OVER, 或者被主动删除该定时器
-    /// 添加定时器, 如果time_step为0,则添加定时器失败
+    /// 添加定时器, 如果time_step为0, 则添加定时器失败
     pub fn add_new_timer(
         &mut self,
         tick_step: u64,
