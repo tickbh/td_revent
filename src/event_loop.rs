@@ -1,11 +1,13 @@
 #![allow(dead_code)]
 use {Timer, EventEntry};
 use sys::Selector;
-use std::collections::HashMap;
-use {EventFlags, FLAG_PERSIST};
+use {EventFlags, FLAG_PERSIST, EventBuffer, TimerCb, AcceptCb, EventCb, EndCb};
 use std::io;
 use std::any::Any;
+use psocket::{TcpSocket, SOCKET};
 
+///回调的函数返回值, 如果返回OK和CONTINUE, 则默认处理
+///如果返回OVER则主动结束循环, 比如READ则停止READ, 定时器如果是循环的则主动停止当前的定时器 
 pub enum RetValue {
     OK,
     CONTINUE,
@@ -21,17 +23,23 @@ pub struct EventLoopConfig {
     pub notify_capacity: usize,
     pub messages_per_tick: usize,
 
+    pub select_catacity: usize,
+    pub buffer_capacity: usize,
+
     // == Timer ==
-    pub timer_capacity: usize,
+    pub time_max_id: u32,
 }
 
 impl Default for EventLoopConfig {
     fn default() -> EventLoopConfig {
         EventLoopConfig {
-            io_poll_timeout_ms: 1_000,
+            io_poll_timeout_ms: 1,
             notify_capacity: 4_096,
             messages_per_tick: 256,
-            timer_capacity: 65_536,
+
+            select_catacity: 1024,
+            buffer_capacity: 65_536,
+            time_max_id: u32::max_value() / 2,
         }
     }
 }
@@ -41,10 +49,10 @@ impl Default for EventLoopConfig {
 pub struct EventLoop {
     run: bool,
     timer: Timer,
-    selector: Selector,
+    pub selector: Selector,
     config: EventLoopConfig,
     evts: Vec<EventEntry>,
-    event_maps: HashMap<i32, EventEntry>,
+    // event_maps: HashMap<i32, EventEntry>,
 }
 
 
@@ -54,118 +62,142 @@ impl EventLoop {
     }
 
     pub fn configured(config: EventLoopConfig) -> io::Result<EventLoop> {
-        let timer = Timer::new();
-        let selector = try!(Selector::new());
+        let timer = Timer::new(config.time_max_id);
+        let selector = try!(Selector::new(config.select_catacity));
         Ok(EventLoop {
             run: true,
             timer: timer,
             selector: selector,
             config: config,
-            event_maps: HashMap::new(),
             evts: vec![],
         })
     }
 
-    /// Tells the event loop to exit after it is done handling all events in the
-    /// current iteration.
+    /// 关闭主循环, 将在下一次逻辑执行时退出主循环
     pub fn shutdown(&mut self) {
         self.run = false;
 
     }
 
-    /// Indicates whether the event loop is currently running. If it's not it has either
-    /// stopped or is scheduled to stop on the next tick.
+    /// 判断刚才主循环是否在运行中
     pub fn is_running(&self) -> bool {
         self.run
     }
 
-    /// Keep spinning the event loop indefinitely, and notify the handler whenever
-    /// any of the registered handles are ready.
+    /// 循环执行事件的主逻辑, 直到此主循环被shutdown则停止执行
     pub fn run(&mut self) -> io::Result<()> {
         self.run = true;
 
         while self.run {
-            // Execute ticks as long as the event loop is running
-            try!(self.run_once());
+            // 该此循环中, 没有任何数据得到处理, 则强制cpu休眠1ms, 以防止cpu跑满100%
+            if !self.run_once()? {
+                ::std::thread::sleep(::std::time::Duration::from_millis(1));
+            }
 
         }
-
         Ok(())
     }
 
-    /// Spin the event loop once, with a timeout of one second, and notify the
-    /// handler if any of the registered handles become ready during that
-    /// time.
-    pub fn run_once(&mut self) -> io::Result<()> {
-        let size = try!(self.selector.select(&mut self.evts, 0)) as usize;
-        let evts : Vec<EventEntry> = self.evts.drain(..).collect();
-        for evt in evts {
-            if let Some(mut ev) = self.event_maps.remove(&evt.ev_fd) {
-                let is_over = match ev.callback(self, evt.ev_events) {
-                    RetValue::OVER => true,
-                    _ => !ev.ev_events.contains(FLAG_PERSIST),
-                };
-                if is_over {
-                    self.del_event(ev.ev_fd, ev.ev_events);
-                } else {
-                    self.event_maps.insert(ev.ev_fd, ev);
-                }
-            }
-        }
-
+    /// 进行一次的数据处理, 处理包括处理sockets信息, 及处理定时器的信息
+    pub fn run_once(&mut self) -> io::Result<bool> {
+        let timeout_ms = self.config.io_poll_timeout_ms;
+        let size = Selector::do_select(self, timeout_ms)?;
         let is_op = self.timer_process();
-        // nothing todo in this loop, we will sleep 1millis
-        if size == 0 && !is_op {
-            ::std::thread::sleep(::std::time::Duration::from_millis(1));
-        }
-        Ok(())
+        Ok(size != 0 || !is_op)
+    }
+
+    /// 根据socket构造EventBuffer
+    pub fn new_buff(&self, socket: TcpSocket) -> EventBuffer {
+        EventBuffer::new(socket, self.config.buffer_capacity)
     }
 
     /// 添加定时器, 如果time_step为0,则添加定时器失败
-    pub fn add_timer(&mut self, entry: EventEntry) -> i32 {
+    pub fn add_timer(&mut self, entry: EventEntry) -> u32 {
         self.timer.add_timer(entry)
     }
 
     /// 添加定时器,  tick_step变量表示每隔多少ms调用一次该回调
     /// tick_repeat变量表示该定时器是否重复, 如果为true, 则会每tick_step ms进行调用一次, 直到回调返回RetValue::OVER, 或者被主动删除该定时器
     /// 添加定时器, 如果time_step为0,则添加定时器失败
-    pub fn add_new_timer(&mut self, tick_step: u64,
-                     tick_repeat: bool,
-                     call_back: Option<fn(ev: &mut EventLoop,
-                                          fd: i32,
-                                          flag: EventFlags,
-                                          data: Option<&mut Box<Any>>)
-                                          -> RetValue>,
-                     data: Option<Box<Any>>) -> i32 {
-        self.timer.add_timer(EventEntry::new_timer(tick_step, tick_repeat, call_back, data))
+    pub fn add_new_timer(
+        &mut self,
+        tick_step: u64,
+        tick_repeat: bool,
+        timer_cb: Option<TimerCb>,
+        data: Option<Box<Any>>,
+    ) -> u32 {
+        self.timer.add_first_timer(EventEntry::new_timer(
+            tick_step,
+            tick_repeat,
+            timer_cb,
+            data,
+        ))
+    }
+
+    /// 添加定时器,  tick_time指定某一时间添加触发定时器
+    pub fn add_new_timer_at(
+        &mut self,
+        tick_time: u64,
+        timer_cb: Option<TimerCb>,
+        data: Option<Box<Any>>,
+    ) -> u32 {
+        self.timer.add_first_timer(EventEntry::new_timer_at(
+            tick_time,
+            timer_cb,
+            data,
+        ))
     }
 
     /// 删除指定的定时器id, 定时器内部实现细节为红黑树, 删除定时器的时间为O(logn), 如果存在该定时器, 则返回相关的定时器信息
-    pub fn del_timer(&mut self, time_id: i32) -> Option<EventEntry> {
+    pub fn del_timer(&mut self, time_id: u32) -> Option<EventEntry> {
         self.timer.del_timer(time_id)
     }
 
-    /// 添加定时器
-    pub fn add_event(&mut self, entry: EventEntry) {
-        let _ = self.selector.register(entry.ev_fd, entry.ev_events);
-        self.event_maps.insert(entry.ev_fd, entry);
-    }
-
-    /// 添加定时器, ev_fd为socket的句柄id, ev_events为监听读, 写, 持久的信息
-    pub fn add_new_event(&mut self, ev_fd: i32,
-                        ev_events: EventFlags,
-                        call_back: Option<fn(ev: &mut EventLoop, fd: i32, flag: EventFlags, data: Option<&mut Box<Any>>)
-                                                -> RetValue>,
-                        data: Option<Box<Any>>) {
-        self.add_event(EventEntry::new(ev_fd, ev_events, call_back, data))
+    /// 添加socket监听
+    pub fn register_socket(&mut self, buffer: EventBuffer, entry: EventEntry) -> io::Result<()> {
+        let _ = Selector::register_socket(self, buffer, entry);
+        Ok(())
     }
 
     /// 删除指定socket的句柄信息
-    pub fn del_event(&mut self, ev_fd: i32, ev_events: EventFlags) -> Option<EventEntry> {
-        let _ = self.selector.deregister(ev_fd, ev_events);
-        self.event_maps.remove(&ev_fd)
+    pub fn unregister_socket(&mut self, ev_fd: SOCKET, ev_events: EventFlags) -> io::Result<()> {
+        let _ = Selector::unregister_socket(self, ev_fd, ev_events);
+        Ok(())
     }
-    
+
+    /// 向指定socket发送数据, 返回发送的数据长度
+    pub fn send_socket(&mut self, ev_fd: &SOCKET, data: &[u8]) -> io::Result<usize> {
+        Selector::send_socket(self, ev_fd, data)
+    }
+
+    /// 添加定时器, ev_fd为socket的句柄id, ev_events为监听读, 写, 持久的信息
+    pub fn add_new_event(
+        &mut self,
+        socket: TcpSocket,
+        ev_events: EventFlags,
+        event: Option<EventCb>,
+        error: Option<EndCb>,
+        data: Option<Box<Any>>,
+    ) -> io::Result<()> {
+        let ev_fd = socket.as_raw_socket();
+        let buffer = self.new_buff(socket);
+        self.register_socket(buffer, EventEntry::new_event(ev_fd, ev_events, event, error, data))
+    }
+
+    /// 添加定时器, ev_fd为socket的句柄id, ev_events为监听读, 写, 持久的信息
+    pub fn add_new_accept(
+        &mut self,
+        socket: TcpSocket,
+        ev_events: EventFlags,
+        accept: Option<AcceptCb>,
+        error: Option<EndCb>,
+        data: Option<Box<Any>>,
+    ) -> io::Result<()> {
+        let ev_fd = socket.as_raw_socket();
+        let buffer = self.new_buff(socket);
+        self.register_socket(buffer, EventEntry::new_accept(ev_fd, ev_events, accept, error, data))
+    }
+
     /// 定时器的处理处理
     /// 1.取出定时器的第一个, 如果第一个大于当前时间, 则跳出循环, 如果小于等于当前时间进入2
     /// 2.调用回调函数, 如果回调返回OVER或者定时器不是循环定时器, 则删除定时器, 否则把该定时器重时添加到列表
@@ -176,7 +208,8 @@ impl EventLoop {
             match self.timer.tick_time(now) {
                 Some(mut entry) => {
                     is_op = true;
-                    let is_over = match entry.callback(self, EventFlags::empty()) {
+                    let time_id = entry.time_id;
+                    let is_over = match entry.timer_cb(self, time_id) {
                         RetValue::OVER => true,
                         _ => !entry.ev_events.contains(FLAG_PERSIST),
                     };

@@ -1,6 +1,6 @@
 [package]
 name = "td_revent"
-version = "0.2.0"
+version = "0.2.1"
 authors = [ "tickbh <tickdream125@hotmail.com>" ]
 
 description = "Event library for Rust, Async IO similar to libevent"
@@ -18,9 +18,8 @@ rbtree      = "0.1"
 psocket     = "0.1"
 winapi      = "^0.2"
 ws2_32-sys  = "^0.2"
-
-#[dependencies.psocket]
-#path = "../psocket-rs"
+kernel32-sys= "0.2.2"
+rand        = "0.3.17"
 
 [[test]]
 name = "test"

@@ -75,8 +75,7 @@ fn accept_callback(
     RetValue::OK
 }
 
-#[test]
-fn test_base_echo() {
+fn main() {
     println!("Starting TEST_ECHO_SERVER");
     let mut event_loop = EventLoop::new().unwrap();
 
@@ -88,6 +87,7 @@ fn test_base_echo() {
     let _ = client.set_nonblocking(true);
 
     client.write(b"hello world. ").unwrap();
+
     let socket = listener.as_raw_socket();
     let buffer = event_loop.new_buff(listener);
     let _ = event_loop.register_socket(
