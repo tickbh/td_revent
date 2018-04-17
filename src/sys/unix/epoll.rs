@@ -308,6 +308,64 @@ impl Selector {
     }
 
 
+    /// 注册socket事件, 把socket加入到iocp的监听中, 如果监听错误, 则移除相关的资源
+    pub fn modify_socket(
+        event_loop: &mut EventLoop,
+        is_del: bool,
+        socket: SOCKET,
+        entry: EventEntry,
+    ) -> io::Result<()> {
+
+        let err = {
+            let selector = &mut event_loop.selector;
+            if !selector.event_maps.contains_key(&socket) {
+                return Ok(())
+            }
+
+            let mut ev = selector.event_maps[&socket];
+            let event = &mut (*ev.clone().inner);
+            event.entry.merge(is_del, entry);
+
+            let info = EpollEvent {
+                events: ioevent_to_epoll(event.entry.ev_events),
+                data: 0,
+            };
+
+            if let Err(e) = epoll_ctl(self.epfd, EpollOp::EpollCtlDel, socket as RawFd, &info)
+            .map_err(super::from_nix_error) {
+                Err(e)
+            } else {
+                return Ok(())
+            }
+        };
+        Self::unregister_socket(event_loop, socket, EventFlags::empty());
+        return err;
+
+
+        let selector = &mut event_loop.selector;
+        let socket = buffer.as_raw_socket();
+
+        if selector.event_maps.contains_key(&socket) {
+            selector.event_maps.remove(&socket);
+        }
+
+        let info = EpollEvent {
+            events: ioevent_to_epoll(entry.ev_events),
+            data: socket as u64,
+        };
+
+        let event = Event::new(buffer, entry);
+        selector.event_maps.insert(socket, EventImpl::new(event));
+
+        if let Err(e) = epoll_ctl(selector.epfd, EpollOp::EpollCtlAdd, socket as RawFd, &info)
+            .map_err(super::from_nix_error) {
+            selector.event_maps.remove(&socket);
+            return Err(e);
+        }
+        Ok(())
+    }
+
+
     /// 取消某个socket的监听, iocp模式下flags参数无效
     pub fn unregister_socket(
         event_loop: &mut EventLoop,
@@ -344,26 +402,6 @@ impl Selector {
         let err = event_loop.selector.modregister(event.as_raw_socket(), event.entry.ev_events);
         Ok(0)
     }
-
-    // fn post_write_event(&mut self, socket: &SOCKET, data: Option<&[u8]>) -> io::Result<usize> {
-    //     if let Some(event) = self.event_maps.get_mut(&socket) {
-    //         let event = &mut (*event.inner);
-    //         if data.is_some() {
-    //             event.buffer.write.write(data.unwrap());
-    //         }
-    //         if event.buffer.is_in_write || event.buffer.write.empty() {
-    //             return Ok(0);
-    //         }
-            
-    //         event_loop.selector.deregister(event.as_raw_socket(), FLAG_WRITE)?;
-    //         return Ok(0);
-    //     }
-    //     Err(io::Error::new(
-    //         ErrorKind::Other,
-    //         "the socket already be remove",
-    //     ))
-    // }
-
 }
 
 

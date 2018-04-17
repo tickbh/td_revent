@@ -28,11 +28,18 @@ pub use event_buffer::{Buffer, EventBuffer};
 pub mod sys;
 
 pub use event_flags::{EventFlags, FLAG_TIMEOUT, FLAG_READ, FLAG_WRITE, FLAG_PERSIST, FLAG_ERROR,
-                      FLAG_ACCEPT, FLAG_ENDED};
+                      FLAG_ACCEPT, FLAG_ENDED, FLAG_READ_PERSIST, FLAG_WRITE_PERSIST};
 pub use event_entry::{EventEntry, AcceptCb, EventCb, TimerCb, EndCb};
 pub use sys::{AsFd, FromFd};
 
 /// The macro convert Option<&mut Box<Any>> to &mut ty
+#[macro_export]
+macro_rules! any_to_mut {
+    ( $x:expr, $t:ty ) => {
+        $x.unwrap().downcast_mut::<$t>().unwrap()
+    };
+}
+
 #[macro_export]
 macro_rules! any_to_mut {
     ( $x:expr, $t:ty ) => {

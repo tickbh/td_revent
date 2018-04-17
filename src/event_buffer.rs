@@ -129,6 +129,7 @@ pub struct EventBuffer {
     pub socket: TcpSocket,
     pub read_cache: Vec<u8>,
     pub is_in_write: bool,
+    pub is_in_read: bool,
     pub error: Result<()>,
 }
 
@@ -141,6 +142,7 @@ impl EventBuffer {
             socket: socket,
             read_cache: vec![0; capacity],
             is_in_write: false,
+            is_in_read: false,
             error: Ok(()), 
         }
     }

@@ -1,6 +1,7 @@
-pub use {EventFlags, FLAG_TIMEOUT, FLAG_READ, FLAG_WRITE, FLAG_PERSIST, EventLoop, RetValue,
+pub use {EventFlags, FLAG_TIMEOUT, FLAG_READ, FLAG_WRITE, FLAG_ACCEPT, FLAG_PERSIST, EventLoop, RetValue,
          EventBuffer};
 use std::fmt;
+use std::cell::Cell;
 use std::cmp::{Ord, Ordering};
 use std::hash::{self, Hash};
 use std::any::Any;
@@ -27,7 +28,8 @@ pub struct EventEntry {
     pub tick_step: u64,
     pub ev_events: EventFlags,
     pub accept: Option<AcceptCb>,
-    pub event: Option<EventCb>,
+    pub read: Option<EventCb>,
+    pub write: Option<EventCb>,
     pub end: Option<EndCb>,
     pub timer: Option<TimerCb>,
     pub data: Option<Box<Any>>,
@@ -50,7 +52,8 @@ impl EventEntry {
                 FLAG_TIMEOUT
             },
             accept: None,
-            event: None,
+            read: None,
+            write: None,
             end: None,
             timer: timer,
             data: data,
@@ -70,7 +73,8 @@ impl EventEntry {
             tick_step: 0,
             ev_events: FLAG_TIMEOUT,
             accept: None,
-            event: None,
+            read: None,
+            write: None,
             end: None,
             timer: timer,
             data: data,
@@ -82,7 +86,8 @@ impl EventEntry {
     pub fn new_event(
         ev_fd: SOCKET,
         ev_events: EventFlags,
-        event: Option<EventCb>,
+        read: Option<EventCb>,
+        write: Option<EventCb>,
         end: Option<EndCb>,
         data: Option<Box<Any>>,
     ) -> EventEntry {
@@ -91,7 +96,8 @@ impl EventEntry {
             tick_step: 0,
             ev_events: ev_events,
             accept: None,
-            event: event,
+            read: read,
+            write: write,
             end: end,
             timer: None,
             data: data,
@@ -112,7 +118,8 @@ impl EventEntry {
             tick_step: 0,
             ev_events: ev_events,
             accept: accept,
-            event: None,
+            read: None,
+            write: None,
             end: end,
             timer: None,
             data: data,
@@ -127,7 +134,8 @@ impl EventEntry {
             tick_step: 0,
             ev_events: ev_events,
             accept: None,
-            event: None,
+            read: None,
+            write: None,
             end: None,
             timer: None,
             data: None,
@@ -144,12 +152,20 @@ impl EventEntry {
         self.accept.unwrap()(ev, tcp, self.data.as_mut())
     }
 
-    pub fn event_cb(&mut self, ev: &mut EventLoop, event: &mut EventBuffer) -> RetValue {
-        if self.event.is_none() {
+    pub fn read_cb(&mut self, ev: &mut EventLoop, event: &mut EventBuffer) -> RetValue {
+        if self.read.is_none() {
             return RetValue::OK;
         }
 
-        self.event.unwrap()(ev, event, self.data.as_mut())
+        self.read.unwrap()(ev, event, self.data.as_mut())
+    }
+    
+    pub fn write_cb(&mut self, ev: &mut EventLoop, event: &mut EventBuffer) -> RetValue {
+        if self.write.is_none() {
+            return RetValue::OK;
+        }
+
+        self.write.unwrap()(ev, event, self.data.as_mut())
     }
 
     pub fn timer_cb(&mut self, ev: &mut EventLoop, timer: u32) -> RetValue {
@@ -166,6 +182,46 @@ impl EventEntry {
         }
 
         self.end.unwrap()(ev, event, self.data.take())
+    }
+
+    pub fn has_flag(&self, flag: EventFlags) -> bool {
+        self.ev_events.contains(flag)
+    }
+
+    pub fn merge(&mut self, is_del: bool, event: EventEntry) {
+        if is_del {
+            if event.has_flag(FLAG_READ) || event.has_flag(FLAG_ACCEPT) {
+                self.ev_events.remove(FLAG_READ);
+                self.read = None;
+            }
+            if event.has_flag(FLAG_ACCEPT) {
+                self.ev_events.remove(FLAG_ACCEPT);
+                self.accept = None;
+            }
+            if event.has_flag(FLAG_WRITE) {
+                self.ev_events.remove(FLAG_WRITE);
+                self.write = None;
+            }
+        } else {
+            if event.has_flag(FLAG_READ) {
+                self.ev_events.insert(FLAG_READ);
+                if event.read.is_some() {
+                    self.read = event.read;
+                }
+            }
+            if event.has_flag(FLAG_ACCEPT) {
+                self.ev_events.insert(FLAG_ACCEPT);
+                if event.accept.is_some() {
+                    self.accept = event.accept;
+                }
+            }
+            if event.has_flag(FLAG_WRITE) {
+                self.ev_events.insert(FLAG_WRITE);
+                if event.write.is_some() {
+                    self.write = event.write;
+                }
+            }
+        }
     }
 }
 

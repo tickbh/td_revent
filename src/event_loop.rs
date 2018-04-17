@@ -146,13 +146,13 @@ impl EventLoop {
 
     /// 添加socket监听
     pub fn register_socket(&mut self, buffer: EventBuffer, entry: EventEntry) -> io::Result<()> {
-        let _ = Selector::register_socket(self, buffer, entry);
+        let _ = Selector::register_socket(self, buffer, entry)?;
         Ok(())
     }
 
     /// 删除指定socket的句柄信息
     pub fn unregister_socket(&mut self, ev_fd: SOCKET, ev_events: EventFlags) -> io::Result<()> {
-        let _ = Selector::unregister_socket(self, ev_fd, ev_events);
+        let _ = Selector::unregister_socket(self, ev_fd, ev_events)?;
         Ok(())
     }
 
@@ -166,13 +166,14 @@ impl EventLoop {
         &mut self,
         socket: TcpSocket,
         ev_events: EventFlags,
-        event: Option<EventCb>,
+        read: Option<EventCb>,
+        write: Option<EventCb>,
         error: Option<EndCb>,
         data: Option<Box<Any>>,
     ) -> io::Result<()> {
         let ev_fd = socket.as_raw_socket();
         let buffer = self.new_buff(socket);
-        self.register_socket(buffer, EventEntry::new_event(ev_fd, ev_events, event, error, data))
+        self.register_socket(buffer, EventEntry::new_event(ev_fd, ev_events, read, write, error, data))
     }
 
     /// 添加定时器, ev_fd为socket的句柄id, ev_events为监听读, 写, 持久的信息
