@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 use std::os::unix::io::RawFd;
-use std::sync::Arc;
 use std::io::{self, ErrorKind};
 use {EventEntry, EventFlags, FLAG_READ, FLAG_WRITE, FLAG_ACCEPT, EventBuffer, EventLoop, RetValue};
 
@@ -74,7 +73,7 @@ fn read_done(event_loop: &mut EventLoop, socket: SOCKET) {
 
         match ret {
             RetValue::OVER => {
-                event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
+                let _ = event_loop.unregister_socket(event.as_raw_socket());
             }
             _ => {
                 ;
@@ -84,10 +83,9 @@ fn read_done(event_loop: &mut EventLoop, socket: SOCKET) {
         match event.buffer.socket.read(&mut event.buffer.read_cache[..]) {
             Ok(len) => {
                 if len <= 0 {
-                    Selector::unregister_socket(
+                    let _ = Selector::unregister_socket(
                         event_loop,
                         event.buffer.as_raw_socket(),
-                        EventFlags::all(),
                     );
                     return;
                 }
@@ -98,9 +96,9 @@ fn read_done(event_loop: &mut EventLoop, socket: SOCKET) {
                 );
 
                 if event.buffer.has_read_buffer() {
-                    match event.entry.event_cb(event_loop, &mut event_clone.buffer) {
+                    match event.entry.read_cb(event_loop, &mut event_clone.buffer) {
                         RetValue::OVER => {
-                            event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
+                            let _ = event_loop.unregister_socket(event.as_raw_socket());
                             return;
                         }
                         _ => (),
@@ -109,10 +107,9 @@ fn read_done(event_loop: &mut EventLoop, socket: SOCKET) {
             },
             Err(err) => {
                 event.buffer.error = Err(err);
-                Selector::unregister_socket(
+                let _ = Selector::unregister_socket(
                     event_loop,
-                    event.buffer.as_raw_socket(),
-                    EventFlags::all(),
+                    event.buffer.as_raw_socket()
                 );
             },
         };
@@ -135,10 +132,9 @@ fn write_done(event_loop: &mut EventLoop, socket: SOCKET) {
     match event.buffer.socket.write(&event.buffer.write.get_data()[..]) {
         Ok(len) => {
             if len <= 0 {
-                Selector::unregister_socket(
+                let _ = Selector::unregister_socket(
                     event_loop,
-                    event.buffer.as_raw_socket(),
-                    EventFlags::all(),
+                    event.buffer.as_raw_socket()
                 );
                 return;
             }
@@ -152,10 +148,9 @@ fn write_done(event_loop: &mut EventLoop, socket: SOCKET) {
         },
         Err(err) => {
             event.buffer.error = Err(err);
-            Selector::unregister_socket(
+            let _ = Selector::unregister_socket(
                 event_loop,
-                event.buffer.as_raw_socket(),
-                EventFlags::all(),
+                event.buffer.as_raw_socket()
             );
         },
     }
@@ -196,7 +191,6 @@ impl Selector {
 
         for i in 0..cnt {
             let value = event.selector.evts.events[i];
-            let mut ev_flag = EventFlags::empty();
             if value.events.contains(EPOLLIN) {
                 read_done(event, value.data as SOCKET);
             }
@@ -278,7 +272,7 @@ impl Selector {
     }
 
 
-    /// 注册socket事件, 把socket加入到iocp的监听中, 如果监听错误, 则移除相关的资源
+    /// 注册socket事件, 把socket加入到epoll的监听中, 如果监听错误, 则移除相关的资源
     pub fn register_socket(
         event_loop: &mut EventLoop,
         buffer: EventBuffer,
@@ -308,7 +302,7 @@ impl Selector {
     }
 
 
-    /// 注册socket事件, 把socket加入到iocp的监听中, 如果监听错误, 则移除相关的资源
+    /// 注册socket事件, 把socket加入到epoll的监听中, 如果监听错误, 则移除相关的资源
     pub fn modify_socket(
         event_loop: &mut EventLoop,
         is_del: bool,
@@ -322,7 +316,7 @@ impl Selector {
                 return Ok(())
             }
 
-            let mut ev = selector.event_maps[&socket];
+            let mut ev = &selector.event_maps[&socket];
             let event = &mut (*ev.clone().inner);
             event.entry.merge(is_del, entry);
 
@@ -331,46 +325,22 @@ impl Selector {
                 data: 0,
             };
 
-            if let Err(e) = epoll_ctl(self.epfd, EpollOp::EpollCtlDel, socket as RawFd, &info)
+            if let Err(e) = epoll_ctl(selector.epfd, EpollOp::EpollCtlDel, socket as RawFd, &info)
             .map_err(super::from_nix_error) {
                 Err(e)
             } else {
                 return Ok(())
             }
         };
-        Self::unregister_socket(event_loop, socket, EventFlags::empty());
+        Self::unregister_socket(event_loop, socket)?;
         return err;
-
-
-        let selector = &mut event_loop.selector;
-        let socket = buffer.as_raw_socket();
-
-        if selector.event_maps.contains_key(&socket) {
-            selector.event_maps.remove(&socket);
-        }
-
-        let info = EpollEvent {
-            events: ioevent_to_epoll(entry.ev_events),
-            data: socket as u64,
-        };
-
-        let event = Event::new(buffer, entry);
-        selector.event_maps.insert(socket, EventImpl::new(event));
-
-        if let Err(e) = epoll_ctl(selector.epfd, EpollOp::EpollCtlAdd, socket as RawFd, &info)
-            .map_err(super::from_nix_error) {
-            selector.event_maps.remove(&socket);
-            return Err(e);
-        }
-        Ok(())
     }
 
 
-    /// 取消某个socket的监听, iocp模式下flags参数无效
+    /// 取消某个socket的监听
     pub fn unregister_socket(
         event_loop: &mut EventLoop,
         socket: SOCKET,
-        flags: EventFlags,
     ) -> io::Result<()> {
         if let Some(mut event) = event_loop.selector.event_maps.remove(&socket) {
             let event_clone = &mut (*event.clone().inner);
@@ -378,7 +348,7 @@ impl Selector {
             event_clone.buffer.socket.close();
             event.entry.end_cb(event_loop, &mut event_clone.buffer);
         }
-        let _ = event_loop.selector.deregister(socket, flags)?;
+        let _ = event_loop.selector.deregister(socket, EventFlags::all())?;
         Ok(())
     }
 
@@ -393,13 +363,13 @@ impl Selector {
         }
         let mut event = event_loop.selector.event_maps.get_mut(&socket).map(|e| e.clone()).unwrap();
         let event = &mut (*event.inner);
-        event.buffer.write.write(data);
+        event.buffer.write.write(data)?;
         if event.buffer.is_in_write || event.buffer.write.empty() {
             return Ok(0);
         }
         event.entry.ev_events.insert(FLAG_WRITE);
         event.buffer.is_in_write = true;
-        let err = event_loop.selector.modregister(event.as_raw_socket(), event.entry.ev_events);
+        event_loop.selector.modregister(event.as_raw_socket(), event.entry.ev_events)?;
         Ok(0)
     }
 }

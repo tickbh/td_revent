@@ -123,6 +123,7 @@ impl Write for Buffer {
 
 /// 每个已分配的Socket在事件管理器都会分配一个该对象以维护已读队列, 
 /// 在写队列, 标记是否正在请求写操作, 是否发生错误, 及Socket变量
+#[derive(Debug)]
 pub struct EventBuffer {
     pub read: Buffer,
     pub write: Buffer,

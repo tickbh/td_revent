@@ -76,7 +76,7 @@ fn read_done(event_loop: &mut EventLoop, socket: SOCKET) {
 
         match ret {
             RetValue::OVER => {
-                let _ = event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
+                let _ = event_loop.unregister_socket(event.as_raw_socket());
             }
             _ => {
                 ;
@@ -88,8 +88,7 @@ fn read_done(event_loop: &mut EventLoop, socket: SOCKET) {
                 if len <= 0 {
                     let _ = Selector::unregister_socket(
                         event_loop,
-                        event.buffer.as_raw_socket(),
-                        EventFlags::all(),
+                        event.buffer.as_raw_socket()
                     );
                     return;
                 }
@@ -113,8 +112,7 @@ fn read_done(event_loop: &mut EventLoop, socket: SOCKET) {
                 event.buffer.error = Err(err);
                 let _ = Selector::unregister_socket(
                     event_loop,
-                    event.buffer.as_raw_socket(),
-                    EventFlags::all(),
+                    event.buffer.as_raw_socket()
                 );
             },
         };
@@ -139,8 +137,7 @@ fn write_done(event_loop: &mut EventLoop, socket: SOCKET) {
             if len <= 0 {
                 let _ = Selector::unregister_socket(
                     event_loop,
-                    event.buffer.as_raw_socket(),
-                    EventFlags::all(),
+                    event.buffer.as_raw_socket()
                 );
                 return;
             }
@@ -156,8 +153,7 @@ fn write_done(event_loop: &mut EventLoop, socket: SOCKET) {
             event.buffer.error = Err(err);
             let _ = Selector::unregister_socket(
                 event_loop,
-                event.buffer.as_raw_socket(),
-                EventFlags::all(),
+                event.buffer.as_raw_socket()
             );
         },
     }
@@ -315,7 +311,7 @@ impl Selector {
     }
 
 
-    /// 注册socket事件, 把socket加入到iocp的监听中, 如果监听错误, 则移除相关的资源
+    /// 注册socket事件, 把socket加入到kqueue的监听中, 如果监听错误, 则移除相关的资源
     pub fn register_socket(
         event_loop: &mut EventLoop,
         buffer: EventBuffer,
@@ -339,12 +335,40 @@ impl Selector {
         Ok(())
     }
 
+    
+    /// 注册socket事件, 把socket加入到kqueue的监听中, 如果监听错误, 则移除相关的资源
+    pub fn modify_socket(
+        event_loop: &mut EventLoop,
+        is_del: bool,
+        socket: SOCKET,
+        entry: EventEntry,
+    ) -> io::Result<()> {
 
-    /// 取消某个socket的监听, iocp模式下flags参数无效
+        let err = {
+            let selector = &mut event_loop.selector;
+            if !selector.event_maps.contains_key(&socket) {
+                return Ok(())
+            }
+
+            let mut ev = &selector.event_maps[&socket];
+            let event = &mut (*ev.clone().inner);
+            event.entry.merge(is_del, entry);
+
+            select.register(socket, event.entry.ev_events)
+            if let Err(e) = select.register(socket, event.entry.ev_events) {
+                Err(e)
+            } else {
+                return Ok(())
+            }
+        };
+        Self::unregister_socket(event_loop, socket)?;
+        return err;
+    }
+
+    /// 取消某个socket的监听
     pub fn unregister_socket(
         event_loop: &mut EventLoop,
-        socket: SOCKET,
-        _flags: EventFlags,
+        socket: SOCKET
     ) -> io::Result<()> {
         if let Some(mut event) = event_loop.selector.event_maps.remove(&socket) {
             let event_clone = &mut (*event.clone().inner);

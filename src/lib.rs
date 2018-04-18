@@ -29,28 +29,34 @@ pub mod sys;
 
 pub use event_flags::{EventFlags, FLAG_TIMEOUT, FLAG_READ, FLAG_WRITE, FLAG_PERSIST, FLAG_ERROR,
                       FLAG_ACCEPT, FLAG_ENDED, FLAG_READ_PERSIST, FLAG_WRITE_PERSIST};
-pub use event_entry::{EventEntry, AcceptCb, EventCb, TimerCb, EndCb};
+pub use event_entry::{EventEntry, AcceptCb, EventCb, TimerCb, EndCb, CellAny};
 pub use sys::{AsFd, FromFd};
 
-/// The macro convert Option<&mut Box<Any>> to &mut ty
+/// The macro convert Option<&mut Cell<Option<Box<Any>>>> to &mut ty
 #[macro_export]
 macro_rules! any_to_mut {
     ( $x:expr, $t:ty ) => {
-        $x.unwrap().downcast_mut::<$t>().unwrap()
+        // {
+        //     let cell = $x.unwrap();
+        //     cell.get_mut().unwrap().downcast_mut::<$t>().unwrap()
+        // }
+        // $x.map(|cell| cell.get_mut().as_mut().unwrap().downcast_mut::<$t>().unwrap())
+        $x.get_mut().as_mut().unwrap().downcast_mut::<$t>().unwrap()
     };
 }
 
-#[macro_export]
-macro_rules! any_to_mut {
-    ( $x:expr, $t:ty ) => {
-        $x.unwrap().downcast_mut::<$t>().unwrap()
-    };
-}
-
-/// The macro convert Option<&mut Box<Any>> to &ty
+/// The macro convert Option<&mut Cell<Option<Box<Any>>>> to &ty
 #[macro_export]
 macro_rules! any_to_ref {
     ( $x:expr, $t:ty ) => {
-        $x.unwrap().downcast_ref::<$t>().unwrap()
+        $x.get_mut().as_ref().unwrap().downcast_ref::<$t>().unwrap()
+    };
+}
+
+/// The macro convert Option<&mut Cell<Option<Box<Any>>>> to &ty
+#[macro_export]
+macro_rules! any_unwrap {
+    ( $x:expr, $t:ty  ) => {
+        *$x.take().unwrap().downcast::<$t>().unwrap()
     };
 }

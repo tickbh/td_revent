@@ -151,8 +151,8 @@ impl EventLoop {
     }
 
     /// 删除指定socket的句柄信息
-    pub fn unregister_socket(&mut self, ev_fd: SOCKET, ev_events: EventFlags) -> io::Result<()> {
-        let _ = Selector::unregister_socket(self, ev_fd, ev_events)?;
+    pub fn unregister_socket(&mut self, ev_fd: SOCKET) -> io::Result<()> {
+        let _ = Selector::unregister_socket(self, ev_fd)?;
         Ok(())
     }
 
@@ -202,7 +202,11 @@ impl EventLoop {
                     is_op = true;
                     let time_id = entry.time_id;
                     let is_over = match entry.timer_cb(self, time_id) {
-                        RetValue::OVER => true,
+                        (RetValue::OVER, _) => true,
+                        (RetValue::CONTINUE, time) => {
+                            entry.tick_step = time;
+                            false
+                        },
                         _ => !entry.ev_events.contains(FLAG_PERSIST),
                     };
 

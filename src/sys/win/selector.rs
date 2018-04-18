@@ -1,4 +1,4 @@
-use {EventEntry, EventFlags, FLAG_READ, FLAG_WRITE, FLAG_PERSIST, FLAG_READ_PERSIST, FLAG_ACCEPT, FLAG_ENDED, EventBuffer,
+use {EventEntry, FLAG_READ, FLAG_WRITE, FLAG_PERSIST, FLAG_READ_PERSIST, FLAG_ACCEPT, FLAG_ENDED, EventBuffer,
      EventLoop, RetValue};
 use std::collections::HashMap;
 use std::mem;
@@ -121,6 +121,7 @@ impl Events {
 }
 
 fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
+    println!("read_done !!!!!!!!!!!!!!!!!!!!!!");
     let status = CompletionStatus::from_entry(status);
     let mut event = overlapped2arc!(status.overlapped(), Event, read);
     if event.is_accept() {
@@ -142,7 +143,7 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
         };
         match ret {
             RetValue::OVER => {
-                let _ = event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
+                let _ = event_loop.unregister_socket(event.as_raw_socket());
             }
             _ => {
                 
@@ -156,7 +157,7 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
                 )
                 {
                     event.buffer.error = Err(err);
-                    let _ = event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
+                    let _ = event_loop.unregister_socket(event.as_raw_socket());
                 } else {
                     event.buffer.is_in_read = true;
                 }
@@ -168,8 +169,7 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
         if status.flag().contains(FLAG_ENDED) {
             let _ = Selector::_unregister_socket(
                 event_loop,
-                event.buffer.as_raw_socket(),
-                EventFlags::all(),
+                event.buffer.as_raw_socket()
             );
             return;
         }
@@ -177,8 +177,7 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
         if bytes_transferred == 0 {
             let _ = Selector::unregister_socket(
                 event_loop,
-                event.buffer.as_raw_socket(),
-                EventFlags::all(),
+                event.buffer.as_raw_socket()
             );
             return;
         }
@@ -193,7 +192,7 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
         if event.buffer.has_read_buffer() {
             match event.entry.read_cb(event_loop, &mut event_clone.buffer) {
                 RetValue::OVER => {
-                    let _ = event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
+                    let _ = event_loop.unregister_socket(event.as_raw_socket());
                     return;
                 }
                 _ => (),
@@ -209,7 +208,7 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
         ) {
             Err(e) => {
                 event.buffer.error = Err(e);
-                let _ = event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
+                let _ = event_loop.unregister_socket(event.as_raw_socket());
             },
             _ => {
                 event.buffer.is_in_read = true;
@@ -227,7 +226,7 @@ fn write_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
 
     match event.entry.write_cb(event_loop, &mut event_clone.buffer) {
         RetValue::OVER => {
-            let _ = event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
+            let _ = event_loop.unregister_socket(event.as_raw_socket());
             return;
         }
         _ => (),
@@ -340,7 +339,7 @@ impl Selector {
             if data.is_some() {
                 event.buffer.write.write(data.unwrap())?;
             }
-            if event.buffer.is_in_write || event.is_end {
+            if event.buffer.is_in_write || event.buffer.write.empty() || event.is_end {
                 return Ok(0);
             }
 
@@ -434,7 +433,7 @@ impl Selector {
                 return Ok(())
             }
 
-            if let Some(mut ev) = selector.event_maps.get_mut(&socket) {
+            if let Some(ev) = selector.event_maps.get_mut(&socket) {
                 let event = &mut (*ev.clone().inner);
                 event.entry.merge(is_del, entry);
             }
@@ -445,7 +444,7 @@ impl Selector {
                 return Ok(())
             }
         };
-        Self::unregister_socket(event_loop, socket, EventFlags::empty());
+        Self::unregister_socket(event_loop, socket)?;
         return err;
     }
 
@@ -454,7 +453,6 @@ impl Selector {
     fn _unregister_socket(
         event_loop: &mut EventLoop,
         socket: SOCKET,
-        _flags: EventFlags,
     ) -> io::Result<()> {
         if let Some(mut ev) = event_loop.selector.event_maps.remove(&socket) {
             let event = &mut (*ev.clone().inner);
@@ -471,7 +469,6 @@ impl Selector {
     pub fn unregister_socket(
         event_loop: &mut EventLoop,
         socket: SOCKET,
-        _flags: EventFlags,
     ) -> io::Result<()> {
         if let Some(ev) = event_loop.selector.event_maps.get_mut(&socket) {
             let event = &mut (*ev.clone().inner);

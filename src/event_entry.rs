@@ -10,16 +10,28 @@ use psocket::{TcpSocket, SOCKET, INVALID_SOCKET};
 
 extern crate time;
 
+pub type CellAny = Cell<Option<Box<Any>>>;
+
 pub type AcceptCb = fn(ev: &mut EventLoop,
                        Result<TcpSocket>,
-                       data: Option<&mut Box<Any>>)
+                       data: Option<&mut CellAny>)
                        -> RetValue;
 pub type EventCb = fn(ev: &mut EventLoop,
                       &mut EventBuffer,
-                      data: Option<&mut Box<Any>>)
+                      data: Option<&mut CellAny>)
                       -> RetValue;
-pub type EndCb = fn(ev: &mut EventLoop, &mut EventBuffer, data: Option<Box<Any>>);
-pub type TimerCb = fn(ev: &mut EventLoop, timer: u32, data: Option<&mut Box<Any>>) -> RetValue;
+pub type EndCb = fn(ev: &mut EventLoop, &mut EventBuffer, data: Option<CellAny>);
+pub type TimerCb = fn(ev: &mut EventLoop, timer: u32, data: Option<&mut CellAny>) -> (RetValue, u64);
+
+macro_rules! data_to_cellany {
+    ( $x:expr ) => {
+        if $x.is_some() {
+            Some(Cell::new(Some($x.unwrap())))
+        } else {
+            None
+        }
+    };
+}
 
 pub struct EventEntry {
     pub ev_fd: SOCKET,
@@ -32,7 +44,7 @@ pub struct EventEntry {
     pub write: Option<EventCb>,
     pub end: Option<EndCb>,
     pub timer: Option<TimerCb>,
-    pub data: Option<Box<Any>>,
+    pub data: Option<CellAny>,
 }
 
 impl EventEntry {
@@ -56,7 +68,7 @@ impl EventEntry {
             write: None,
             end: None,
             timer: timer,
-            data: data,
+            data: data_to_cellany!(data),
             time_id: 0,
             ev_fd: INVALID_SOCKET,
         }
@@ -77,7 +89,7 @@ impl EventEntry {
             write: None,
             end: None,
             timer: timer,
-            data: data,
+            data: data_to_cellany!(data),
             time_id: 0,
             ev_fd: INVALID_SOCKET,
         }
@@ -100,7 +112,7 @@ impl EventEntry {
             write: write,
             end: end,
             timer: None,
-            data: data,
+            data: data_to_cellany!(data),
             time_id: 0,
             ev_fd: ev_fd,
         }
@@ -122,7 +134,7 @@ impl EventEntry {
             write: None,
             end: end,
             timer: None,
-            data: data,
+            data: data_to_cellany!(data),
             time_id: 0,
             ev_fd: ev_fd,
         }
@@ -168,12 +180,16 @@ impl EventEntry {
         self.write.unwrap()(ev, event, self.data.as_mut())
     }
 
-    pub fn timer_cb(&mut self, ev: &mut EventLoop, timer: u32) -> RetValue {
+    pub fn timer_cb(&mut self, ev: &mut EventLoop, timer: u32) -> (RetValue, u64) {
         if self.timer.is_none() {
-            return RetValue::OK;
+            return (RetValue::OK, 0);
         }
 
-        self.timer.unwrap()(ev, timer, self.data.as_mut())
+        let ret = self.timer.unwrap()(ev, timer, self.data.as_mut());
+        // if self.data.is_some() {
+        //     assert!(self.data.as_mut().unwrap().get_mut().is_none());
+        // }
+        ret
     }
 
     pub fn end_cb(&mut self, ev: &mut EventLoop, event: &mut EventBuffer) {
