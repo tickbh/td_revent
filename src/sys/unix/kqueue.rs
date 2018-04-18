@@ -99,9 +99,9 @@ fn read_done(event_loop: &mut EventLoop, socket: SOCKET) {
                 );
 
                 if event.buffer.has_read_buffer() {
-                    match event.entry.event_cb(event_loop, &mut event_clone.buffer) {
+                    match event.entry.read_cb(event_loop, &mut event_clone.buffer) {
                         RetValue::OVER => {
-                            let _ = event_loop.unregister_socket(event.as_raw_socket(), EventFlags::all());
+                            let _ = event_loop.unregister_socket(event.as_raw_socket());
                             return;
                         }
                         _ => (),
@@ -350,12 +350,14 @@ impl Selector {
                 return Ok(())
             }
 
-            let mut ev = &selector.event_maps[&socket];
-            let event = &mut (*ev.clone().inner);
-            event.entry.merge(is_del, entry);
+            let ev_events = {
+                let ev = &selector.event_maps[&socket];
+                let event = &mut (*ev.clone().inner);
+                event.entry.merge(is_del, entry);
+                event.entry.ev_events
+            };
 
-            select.register(socket, event.entry.ev_events)
-            if let Err(e) = select.register(socket, event.entry.ev_events) {
+            if let Err(e) = selector.register(socket, ev_events) {
                 Err(e)
             } else {
                 return Ok(())
