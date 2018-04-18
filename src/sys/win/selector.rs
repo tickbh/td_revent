@@ -121,7 +121,6 @@ impl Events {
 }
 
 fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
-    println!("read_done !!!!!!!!!!!!!!!!!!!!!!");
     let status = CompletionStatus::from_entry(status);
     let mut event = overlapped2arc!(status.overlapped(), Event, read);
     if event.is_accept() {
@@ -150,8 +149,12 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
                 if !event.entry.has_flag(FLAG_PERSIST) && !event.entry.has_flag(FLAG_READ_PERSIST) {
                     event.entry.ev_events.remove(FLAG_READ);
                     event.entry.ev_events.remove(FLAG_ACCEPT);
+                }
+                
+                if !event.entry.has_flag(FLAG_ACCEPT) {
                     return;
                 }
+                
                 if let Err(err) = event_loop.selector.post_accept_event(
                     event.as_raw_socket(),
                 )
@@ -198,8 +201,12 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
                 _ => (),
             }
         }
+
         if !event.entry.has_flag(FLAG_PERSIST) && !event.entry.has_flag(FLAG_READ_PERSIST) {
             event.entry.ev_events.remove(FLAG_READ);
+        }
+
+        if !event.entry.has_flag(FLAG_READ) {
             return;
         }
 
@@ -218,7 +225,6 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
 }
 
 fn write_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
-    println!("111111111111111111 {}", 1);
     let status = CompletionStatus::from_entry(status);
     let mut event = overlapped2arc!(status.overlapped(), Event, write);
     let mut event_clone = event.clone();
@@ -332,9 +338,7 @@ impl Selector {
     /// 如果写缓存数据没有全部被写入, 则表示当前无法全部写入, 设置socket状态在写状态
     /// 等待写完成的事件通知, 再写入剩余的相关数据
     fn post_write_event(&mut self, socket: &SOCKET, data: Option<&[u8]>) -> io::Result<usize> {
-        println!("post_write_event!!!!!!!!!!!!");
         if let Some(ev) = self.event_maps.get_mut(&socket) {
-            println!("aaaaaaaaaaaaaaaaaaaaa");
             let event = &mut (*ev.clone().inner);
             if data.is_some() {
                 event.buffer.write.write(data.unwrap())?;
@@ -342,8 +346,6 @@ impl Selector {
             if event.buffer.is_in_write || event.buffer.write.empty() || event.is_end {
                 return Ok(0);
             }
-
-            println!("start write!!!!!!!!!!!!!!!!!!!!!!");
 
             let write = event.write.as_mut_ptr();
             let res = unsafe {
@@ -413,7 +415,6 @@ impl Selector {
         let event = Event::new(buffer, entry);
         selector.event_maps.insert(socket, EventImpl::new(event));
         if let Err(e) = selector.check_socket_event(socket) {
-            println!("err!!!! = {:?}", e);
             selector.event_maps.remove(&socket);
             return Err(e);
         }

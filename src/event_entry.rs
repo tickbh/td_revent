@@ -47,6 +47,24 @@ pub struct EventEntry {
     pub data: Option<CellAny>,
 }
 
+impl Default for EventEntry {
+    fn default() -> EventEntry {
+        EventEntry {
+            tick_ms: 0,
+            tick_step: 0,
+            ev_events: EventFlags::empty(),
+            accept: None,
+            read: None,
+            write: None,
+            end: None,
+            timer: None,
+            data: None,
+            time_id: 0,
+            ev_fd: INVALID_SOCKET,
+        }
+    }
+}
+
 impl EventEntry {
     /// tick_step is us
     pub fn new_timer(
@@ -63,14 +81,9 @@ impl EventEntry {
             } else {
                 FLAG_TIMEOUT
             },
-            accept: None,
-            read: None,
-            write: None,
-            end: None,
             timer: timer,
-            data: data_to_cellany!(data),
-            time_id: 0,
-            ev_fd: INVALID_SOCKET,
+            data: data_to_cellany!(data), 
+            .. Default::default()
         }
     }
 
@@ -82,16 +95,10 @@ impl EventEntry {
     ) -> EventEntry {
         EventEntry {
             tick_ms: tick_time,
-            tick_step: 0,
             ev_events: FLAG_TIMEOUT,
-            accept: None,
-            read: None,
-            write: None,
-            end: None,
             timer: timer,
-            data: data_to_cellany!(data),
-            time_id: 0,
-            ev_fd: INVALID_SOCKET,
+            data: data_to_cellany!(data), 
+            .. Default::default()
         }
     }
 
@@ -104,17 +111,13 @@ impl EventEntry {
         data: Option<Box<Any>>,
     ) -> EventEntry {
         EventEntry {
-            tick_ms: 0,
-            tick_step: 0,
             ev_events: ev_events,
-            accept: None,
             read: read,
             write: write,
             end: end,
-            timer: None,
             data: data_to_cellany!(data),
-            time_id: 0,
             ev_fd: ev_fd,
+            .. Default::default()
         }
     }
 
@@ -126,33 +129,20 @@ impl EventEntry {
         data: Option<Box<Any>>,
     ) -> EventEntry {
         EventEntry {
-            tick_ms: 0,
-            tick_step: 0,
             ev_events: ev_events,
             accept: accept,
-            read: None,
-            write: None,
             end: end,
-            timer: None,
             data: data_to_cellany!(data),
-            time_id: 0,
             ev_fd: ev_fd,
+            .. Default::default()
         }
     }
 
     pub fn new_evfd(ev_fd: SOCKET, ev_events: EventFlags) -> EventEntry {
         EventEntry {
-            tick_ms: 0,
-            tick_step: 0,
             ev_events: ev_events,
-            accept: None,
-            read: None,
-            write: None,
-            end: None,
-            timer: None,
-            data: None,
-            time_id: 0,
             ev_fd: ev_fd,
+            .. Default::default()
         }
     }
 

@@ -150,6 +150,13 @@ impl EventLoop {
         Ok(())
     }
 
+    /// 修改socket监听
+    pub fn modify_socket(&mut self, is_del: bool, socket: SOCKET, entry: EventEntry) -> io::Result<()> {
+        let _ = Selector::modify_socket(self, is_del, socket, entry)?;
+        Ok(())
+    }
+
+
     /// 删除指定socket的句柄信息
     pub fn unregister_socket(&mut self, ev_fd: SOCKET) -> io::Result<()> {
         let _ = Selector::unregister_socket(self, ev_fd)?;
