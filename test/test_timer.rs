@@ -1,6 +1,5 @@
 use td_revent::*;
 use std::fmt;
-use std::any::Any;
 
 static mut S_COUNT: u32 = 0;
 static mut S_DEL_TIMER: u32 = 0;
@@ -9,8 +8,8 @@ static mut S_DEL_TIMER: u32 = 0;
 fn time_callback(
     ev: &mut EventLoop,
     timer: u32,
-    data: Option<&mut Box<Any>>,
-) -> RetValue {
+    data: Option<&mut CellAny>,
+) -> (RetValue, u64) {
     if data.is_none() {
         println!("data is none");
         let count = unsafe {
@@ -21,15 +20,20 @@ fn time_callback(
             ev.shutdown();
         }
     } else {
-        let obj = any_to_mut!(data, Point);
+        let cellany = data.unwrap();
+        let obj = any_to_mut!(cellany, Point);
         obj.y = obj.y + 1;
+        if obj.y >= 25 {
+            return (RetValue::OK, 0);
+        }
         println!("callback {:?}", obj);
+        return (RetValue::CONTINUE, 10);
     }
 
     if unsafe { S_DEL_TIMER == timer } {
-        return RetValue::OVER;
+        return (RetValue::OVER, 0);
     }
-    RetValue::OK
+    (RetValue::OK, 0)
 }
 
 #[derive(Default, Debug, Clone)]

@@ -5,7 +5,6 @@ extern crate psocket;
 use td_revent::*;
 use std::io::prelude::*;
 use std::io::Result;
-use std::any::Any;
 use self::psocket::TcpSocket;
 
 static mut S_COUNT: i32 = 0;
@@ -13,7 +12,7 @@ static mut S_COUNT: i32 = 0;
 fn client_read_callback(
     ev: &mut EventLoop,
     buffer: &mut EventBuffer,
-    _data: Option<&mut Box<Any>>,
+    _data: Option<&mut CellAny>,
 ) -> RetValue {
     let len = buffer.read.len();
     assert!(len > 0);
@@ -35,7 +34,7 @@ fn client_read_callback(
 fn server_read_callback(
     ev: &mut EventLoop,
     buffer: &mut EventBuffer,
-    _data: Option<&mut Box<Any>>,
+    _data: Option<&mut CellAny>,
 ) -> RetValue {
     let len = buffer.read.len();
     let data = buffer.read.drain_collect(len);
@@ -45,18 +44,18 @@ fn server_read_callback(
 
 
 
-fn server_end_callback(ev: &mut EventLoop, _buffer: &mut EventBuffer, _data: Option<Box<Any>>) {
+fn server_end_callback(ev: &mut EventLoop, _buffer: &mut EventBuffer, _data: Option<CellAny>) {
     ev.shutdown();
 }
 
-fn client_end_callback(_ev: &mut EventLoop, _buffer: &mut EventBuffer, _data: Option<Box<Any>>) {
+fn client_end_callback(_ev: &mut EventLoop, _buffer: &mut EventBuffer, _data: Option<CellAny>) {
 }
 
 
 fn accept_callback(
     ev: &mut EventLoop,
     tcp: Result<TcpSocket>,
-    _data: Option<&mut Box<Any>>,
+    _data: Option<&mut CellAny>,
 ) -> RetValue {
     let new_socket = tcp.unwrap();
 
@@ -68,6 +67,7 @@ fn accept_callback(
             socket,
             FLAG_READ | FLAG_PERSIST,
             Some(server_read_callback),
+            None,
             Some(server_end_callback),
             None,
         ),
@@ -109,6 +109,7 @@ fn test_base_echo() {
             socket,
             FLAG_READ | FLAG_PERSIST,
             Some(client_read_callback),
+            None,
             Some(client_end_callback),
             None,
         ),
