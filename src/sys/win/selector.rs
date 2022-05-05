@@ -1,5 +1,4 @@
-use {EventEntry, FLAG_READ, FLAG_WRITE, FLAG_PERSIST, FLAG_READ_PERSIST, FLAG_ACCEPT, FLAG_ENDED, EventBuffer,
-     EventLoop, RetValue};
+use {EventEntry, EventFlags, EventBuffer, EventLoop, RetValue};
 use std::collections::HashMap;
 use std::mem;
 use psocket::SOCKET;
@@ -42,7 +41,7 @@ pub struct Event {
 
 impl Event {
     pub fn is_accept(&self) -> bool {
-        self.entry.ev_events.contains(FLAG_ACCEPT)
+        self.entry.ev_events.contains(EventFlags::FLAG_ACCEPT)
     }
 
     pub fn as_raw_socket(&self) -> SOCKET {
@@ -146,12 +145,12 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
             }
             _ => {
                 
-                if !event.entry.has_flag(FLAG_PERSIST) && !event.entry.has_flag(FLAG_READ_PERSIST) {
-                    event.entry.ev_events.remove(FLAG_READ);
-                    event.entry.ev_events.remove(FLAG_ACCEPT);
+                if !event.entry.has_flag(EventFlags::FLAG_PERSIST) && !event.entry.has_flag(EventFlags::FLAG_READ_PERSIST) {
+                    event.entry.ev_events.remove(EventFlags::FLAG_READ);
+                    event.entry.ev_events.remove(EventFlags::FLAG_ACCEPT);
                 }
                 
-                if !event.entry.has_flag(FLAG_ACCEPT) {
+                if !event.entry.has_flag(EventFlags::FLAG_ACCEPT) {
                     return;
                 }
                 
@@ -169,7 +168,7 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
         return;
     } else {
         let bytes_transferred = status.bytes_transferred() as usize;
-        if status.flag().contains(FLAG_ENDED) {
+        if status.flag().contains(EventFlags::FLAG_ENDED) {
             let _ = Selector::_unregister_socket(
                 event_loop,
                 event.buffer.as_raw_socket()
@@ -202,11 +201,11 @@ fn read_done(event_loop: &mut EventLoop, status: &OVERLAPPED_ENTRY) {
             }
         }
 
-        if !event.entry.has_flag(FLAG_PERSIST) && !event.entry.has_flag(FLAG_READ_PERSIST) {
-            event.entry.ev_events.remove(FLAG_READ);
+        if !event.entry.has_flag(EventFlags::FLAG_PERSIST) && !event.entry.has_flag(EventFlags::FLAG_READ_PERSIST) {
+            event.entry.ev_events.remove(EventFlags::FLAG_READ);
         }
 
-        if !event.entry.has_flag(FLAG_READ) {
+        if !event.entry.has_flag(EventFlags::FLAG_READ) {
             return;
         }
 
@@ -385,13 +384,13 @@ impl Selector {
             (event.inner).entry.ev_events
         };
 
-        if flag.contains(FLAG_ACCEPT) {
+        if flag.contains(EventFlags::FLAG_ACCEPT) {
             self.post_accept_event(socket)?;
         } else {
-            if flag.contains(FLAG_READ) {
+            if flag.contains(EventFlags::FLAG_READ) {
                 self.post_read_event(&socket)?;
             }
-            if flag.contains(FLAG_WRITE) {
+            if flag.contains(EventFlags::FLAG_WRITE) {
                 self.post_write_event(&socket, None)?;
             }
         }
@@ -449,7 +448,7 @@ impl Selector {
         return err;
     }
 
-    /// 收到FLAG_ENDED事件的时候, 把相关的socket资源全部释放完毕
+    /// 收到EventFlags::FLAG_ENDED事件的时候, 把相关的socket资源全部释放完毕
     /// 并触发end_cb事件, 如果有关注此事件, 可得到当前socket的最后状态
     fn _unregister_socket(
         event_loop: &mut EventLoop,
@@ -466,7 +465,7 @@ impl Selector {
     /// 取消某个socket的监听, iocp模式下flags参数无效
     /// iocp模式下, 会把事件置成已完成状态, 这时不可写不可读
     /// 并且把指定的socket手动关闭保证iocp里面的read和write事件先被唤醒
-    /// 然后发送FLAG_ENDED事件, 进行最终析构, 确保资源正确的释放
+    /// 然后发送EventFlags::FLAG_ENDED事件, 进行最终析构, 确保资源正确的释放
     pub fn unregister_socket(
         event_loop: &mut EventLoop,
         socket: SOCKET,
@@ -478,7 +477,7 @@ impl Selector {
             }
             event.buffer.socket.close();
             event.is_end = true;
-            event_loop.selector.port.post_info(0, FLAG_ENDED, event.read.as_mut_ptr())?;
+            event_loop.selector.port.post_info(0, EventFlags::FLAG_ENDED, event.read.as_mut_ptr())?;
         }
         Ok(())
     }

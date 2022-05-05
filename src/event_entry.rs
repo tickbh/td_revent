@@ -1,5 +1,4 @@
-pub use {EventFlags, FLAG_TIMEOUT, FLAG_READ, FLAG_WRITE, FLAG_ACCEPT, FLAG_PERSIST, EventLoop, RetValue,
-         EventBuffer};
+pub use {EventFlags, EventLoop, RetValue, EventBuffer, now_micro};
 use std::fmt;
 use std::cell::Cell;
 use std::cmp::{Ord, Ordering};
@@ -10,7 +9,7 @@ use psocket::{TcpSocket, SOCKET, INVALID_SOCKET};
 
 extern crate time;
 
-pub type CellAny = Cell<Option<Box<Any>>>;
+pub type CellAny = Cell<Option<Box<dyn Any>>>;
 
 pub type AcceptCb = fn(ev: &mut EventLoop,
                        Result<TcpSocket>,
@@ -71,15 +70,15 @@ impl EventEntry {
         tick_step: u64,
         tick_repeat: bool,
         timer: Option<TimerCb>,
-        data: Option<Box<Any>>,
+        data: Option<Box<dyn Any>>,
     ) -> EventEntry {
         EventEntry {
-            tick_ms: time::precise_time_ns() / 1000 + tick_step,
+            tick_ms: now_micro() + tick_step,
             tick_step: tick_step,
             ev_events: if tick_repeat {
-                FLAG_TIMEOUT | FLAG_PERSIST
+                EventFlags::FLAG_TIMEOUT | EventFlags::FLAG_PERSIST
             } else {
-                FLAG_TIMEOUT
+                EventFlags::FLAG_TIMEOUT
             },
             timer: timer,
             data: data_to_cellany!(data), 
@@ -91,11 +90,11 @@ impl EventEntry {
     pub fn new_timer_at(
         tick_time: u64,
         timer: Option<TimerCb>,
-        data: Option<Box<Any>>,
+        data: Option<Box<dyn Any>>,
     ) -> EventEntry {
         EventEntry {
             tick_ms: tick_time,
-            ev_events: FLAG_TIMEOUT,
+            ev_events: EventFlags::FLAG_TIMEOUT,
             timer: timer,
             data: data_to_cellany!(data), 
             .. Default::default()
@@ -108,7 +107,7 @@ impl EventEntry {
         read: Option<EventCb>,
         write: Option<EventCb>,
         end: Option<EndCb>,
-        data: Option<Box<Any>>,
+        data: Option<Box<dyn Any>>,
     ) -> EventEntry {
         EventEntry {
             ev_events: ev_events,
@@ -126,7 +125,7 @@ impl EventEntry {
         ev_events: EventFlags,
         accept: Option<AcceptCb>,
         end: Option<EndCb>,
-        data: Option<Box<Any>>,
+        data: Option<Box<dyn Any>>,
     ) -> EventEntry {
         EventEntry {
             ev_events: ev_events,
@@ -196,33 +195,33 @@ impl EventEntry {
 
     pub fn merge(&mut self, is_del: bool, event: EventEntry) {
         if is_del {
-            if event.has_flag(FLAG_READ) || event.has_flag(FLAG_ACCEPT) {
-                self.ev_events.remove(FLAG_READ);
+            if event.has_flag(EventFlags::FLAG_READ) || event.has_flag(EventFlags::FLAG_ACCEPT) {
+                self.ev_events.remove(EventFlags::FLAG_READ);
                 self.read = None;
             }
-            if event.has_flag(FLAG_ACCEPT) {
-                self.ev_events.remove(FLAG_ACCEPT);
+            if event.has_flag(EventFlags::FLAG_ACCEPT) {
+                self.ev_events.remove(EventFlags::FLAG_ACCEPT);
                 self.accept = None;
             }
-            if event.has_flag(FLAG_WRITE) {
-                self.ev_events.remove(FLAG_WRITE);
+            if event.has_flag(EventFlags::FLAG_WRITE) {
+                self.ev_events.remove(EventFlags::FLAG_WRITE);
                 self.write = None;
             }
         } else {
-            if event.has_flag(FLAG_READ) {
-                self.ev_events.insert(FLAG_READ);
+            if event.has_flag(EventFlags::FLAG_READ) {
+                self.ev_events.insert(EventFlags::FLAG_READ);
                 if event.read.is_some() {
                     self.read = event.read;
                 }
             }
-            if event.has_flag(FLAG_ACCEPT) {
-                self.ev_events.insert(FLAG_ACCEPT);
+            if event.has_flag(EventFlags::FLAG_ACCEPT) {
+                self.ev_events.insert(EventFlags::FLAG_ACCEPT);
                 if event.accept.is_some() {
                     self.accept = event.accept;
                 }
             }
-            if event.has_flag(FLAG_WRITE) {
-                self.ev_events.insert(FLAG_WRITE);
+            if event.has_flag(EventFlags::FLAG_WRITE) {
+                self.ev_events.insert(EventFlags::FLAG_WRITE);
                 if event.write.is_some() {
                     self.write = event.write;
                 }
@@ -259,7 +258,7 @@ impl PartialOrd for EventEntry {
 
 impl PartialEq for EventEntry {
     fn eq(&self, other: &Self) -> bool {
-        if self.ev_events.contains(FLAG_TIMEOUT) {
+        if self.ev_events.contains(EventFlags::FLAG_TIMEOUT) {
             self.tick_ms == other.tick_ms
         } else {
             self.ev_fd == other.ev_fd

@@ -1,5 +1,6 @@
 use EventEntry;
 use std::fmt;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::cmp::{Ord, Ordering};
 use std::collections::HashMap;
 use rbtree::RBTree;
@@ -44,7 +45,12 @@ impl Timer {
     }
 
     pub fn now(&self) -> u64 {
-        time::precise_time_ns() / 1000
+        let start = SystemTime::now();
+        let since_the_epoch = start
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+        let ms = since_the_epoch.as_secs() as u64 * 1000u64 + (since_the_epoch.subsec_nanos() as f64 / 1_000_000.0) as u64;
+        ms
     }
 
     /// 添加定时器, 非定时器, 通常是重复定时器结束后进行的调用

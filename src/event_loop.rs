@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use {Timer, EventEntry};
 use sys::Selector;
-use {EventFlags, FLAG_PERSIST, EventBuffer, TimerCb, AcceptCb, EventCb, EndCb};
+use {EventFlags, EventBuffer, TimerCb, AcceptCb, EventCb, EndCb};
 use std::io;
 use std::any::Any;
 use psocket::{TcpSocket, SOCKET};
@@ -115,7 +115,7 @@ impl EventLoop {
         tick_step: u64,
         tick_repeat: bool,
         timer_cb: Option<TimerCb>,
-        data: Option<Box<Any>>,
+        data: Option<Box<dyn Any>>,
     ) -> u32 {
         self.timer.add_first_timer(EventEntry::new_timer(
             tick_step,
@@ -130,7 +130,7 @@ impl EventLoop {
         &mut self,
         tick_time: u64,
         timer_cb: Option<TimerCb>,
-        data: Option<Box<Any>>,
+        data: Option<Box<dyn Any>>,
     ) -> u32 {
         self.timer.add_first_timer(EventEntry::new_timer_at(
             tick_time,
@@ -176,7 +176,7 @@ impl EventLoop {
         read: Option<EventCb>,
         write: Option<EventCb>,
         error: Option<EndCb>,
-        data: Option<Box<Any>>,
+        data: Option<Box<dyn Any>>,
     ) -> io::Result<()> {
         let ev_fd = socket.as_raw_socket();
         let buffer = self.new_buff(socket);
@@ -190,7 +190,7 @@ impl EventLoop {
         ev_events: EventFlags,
         accept: Option<AcceptCb>,
         error: Option<EndCb>,
-        data: Option<Box<Any>>,
+        data: Option<Box<dyn Any>>,
     ) -> io::Result<()> {
         let ev_fd = socket.as_raw_socket();
         let buffer = self.new_buff(socket);
@@ -214,7 +214,7 @@ impl EventLoop {
                             entry.tick_step = time;
                             false
                         },
-                        _ => !entry.ev_events.contains(FLAG_PERSIST),
+                        _ => !entry.ev_events.contains(EventFlags::FLAG_PERSIST),
                     };
 
                     if !is_over {

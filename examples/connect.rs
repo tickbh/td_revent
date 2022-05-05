@@ -58,7 +58,7 @@ fn time_callback(
         obj,
         EventEntry::new_event(
             socket,
-            FLAG_READ | FLAG_PERSIST,
+            EventFlags::FLAG_READ | EventFlags::FLAG_PERSIST,
             Some(client_read_callback),
             Some(client_write_callback),
             Some(client_end_callback),

@@ -65,7 +65,7 @@ fn accept_callback(
         buffer,
         EventEntry::new_event(
             socket,
-            FLAG_READ | FLAG_PERSIST,
+            EventFlags::FLAG_READ | EventFlags::FLAG_PERSIST,
             Some(server_read_callback),
             None,
             Some(server_end_callback),
@@ -94,7 +94,7 @@ fn main() {
         buffer,
         EventEntry::new_accept(
             socket,
-            FLAG_READ | FLAG_PERSIST | FLAG_ACCEPT,
+            EventFlags::FLAG_READ | EventFlags::FLAG_PERSIST | EventFlags::FLAG_ACCEPT,
             Some(accept_callback),
             None,
             None,
@@ -107,7 +107,7 @@ fn main() {
         buffer,
         EventEntry::new_event(
             socket,
-            FLAG_READ | FLAG_PERSIST,
+            EventFlags::FLAG_READ | EventFlags::FLAG_PERSIST,
             Some(client_read_callback),
             None,
             Some(client_end_callback),

@@ -10,7 +10,7 @@ Getting started guide Currently a work in progress:
 To use td_revent, first add this to your Cargo.toml:
 ```rust
 [dependencies]
-td_revent = "0.1.1"
+td_revent = "0.3.0"
 ```
 Then, add this to your crate root:
 
