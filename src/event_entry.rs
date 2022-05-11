@@ -5,7 +5,7 @@ use std::cmp::{Ord, Ordering};
 use std::hash::{self, Hash};
 use std::any::Any;
 use std::io::Result;
-use psocket::{TcpSocket, SOCKET, INVALID_SOCKET};
+use psocket::{TcpSocket, SOCKET};
 
 extern crate time;
 
@@ -59,7 +59,7 @@ impl Default for EventEntry {
             timer: None,
             data: None,
             time_id: 0,
-            ev_fd: INVALID_SOCKET,
+            ev_fd: 0,
         }
     }
 }

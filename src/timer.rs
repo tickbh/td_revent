@@ -1,4 +1,4 @@
-use EventEntry;
+use {EventEntry, now_micro};
 use std::fmt;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::cmp::{Ord, Ordering};
@@ -44,15 +44,6 @@ impl Timer {
         }
     }
 
-    pub fn now(&self) -> u64 {
-        let start = SystemTime::now();
-        let since_the_epoch = start
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
-        let ms = since_the_epoch.as_secs() as u64 * 1000u64 + (since_the_epoch.subsec_nanos() as f64 / 1_000_000.0) as u64;
-        ms
-    }
-
     /// 添加定时器, 非定时器, 通常是重复定时器结束后进行的调用
     pub fn add_timer(&mut self, mut entry: EventEntry) -> u32 {
         if entry.tick_step == 0 {
@@ -62,7 +53,7 @@ impl Timer {
             entry.time_id = self.calc_new_id();
         };
         let time_id = entry.time_id;
-        entry.tick_ms = self.now() + entry.tick_step;
+        entry.tick_ms = now_micro() + entry.tick_step;
         self.time_maps.insert(time_id, entry.tick_ms);
         self.timer_queue.insert(
             TreeKey(entry.tick_ms, time_id),

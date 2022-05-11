@@ -1,6 +1,6 @@
 [package]
 name = "td_revent"
-version = "0.3.0"
+version = "0.3.1"
 authors = [ "tickbh <tickdream125@hotmail.com>" ]
 
 description = "Event library for Rust, Async IO similar to libevent"

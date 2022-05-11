@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use {Timer, EventEntry};
+use {Timer, EventEntry, now_micro};
 use sys::Selector;
 use {EventFlags, EventBuffer, TimerCb, AcceptCb, EventCb, EndCb};
 use std::io;
@@ -55,7 +55,7 @@ impl EventLoop {
 
     pub fn configured(config: EventLoopConfig) -> io::Result<EventLoop> {
         let timer = Timer::new(config.time_max_id);
-        let selector = try!(Selector::new(config.select_catacity));
+        let selector = Selector::new(config.select_catacity)?;
         Ok(EventLoop {
             run: true,
             timer: timer,
@@ -201,7 +201,7 @@ impl EventLoop {
     /// 1.取出定时器的第一个, 如果第一个大于当前时间, 则跳出循环, 如果小于等于当前时间进入2
     /// 2.调用回调函数, 如果回调返回OVER或者定时器不是循环定时器, 则删除定时器, 否则把该定时器重时添加到列表
     fn timer_process(&mut self) -> bool {
-        let now = self.timer.now();
+        let now = now_micro();
         let mut is_op = false;
         loop {
             match self.timer.tick_time(now) {

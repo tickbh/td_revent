@@ -590,7 +590,7 @@ impl TcpSocketExt for TcpSocket {
                                                   LPOVERLAPPED)
                                                   -> BOOL;
 
-        let ptr = try!(ACCEPTEX.get(self.as_raw_socket()));
+        let ptr = ACCEPTEX.get(self.as_raw_socket())?;
         assert!(ptr != 0);
         let accept_ex = mem::transmute::<_, AcceptEx>(ptr);
 
@@ -609,7 +609,7 @@ impl TcpSocketExt for TcpSocket {
         let succeeded = if r == TRUE {
             true
         } else {
-            try!(last_err());
+            last_err()?;
             false
         };
         // NB: this unwrap() should be guaranteed to succeed, and this is an
@@ -661,7 +661,7 @@ unsafe fn connect_overlapped(
                                                LPOVERLAPPED)
                                                -> BOOL;
 
-    let ptr = try!(CONNECTEX.get(socket));
+    let ptr = CONNECTEX.get(socket)?;
     assert!(ptr != 0);
     let connect_ex = mem::transmute::<_, ConnectEx>(ptr);
 
@@ -836,7 +836,7 @@ impl AcceptAddrsBuf {
             remote_len: 0,
             _data: self,
         };
-        let ptr = try!(GETACCEPTEXSOCKADDRS.get(socket.as_raw_socket()));
+        let ptr = GETACCEPTEXSOCKADDRS.get(socket.as_raw_socket())?;
         assert!(ptr != 0);
         unsafe {
             let get_sockaddrs = mem::transmute::<_, GetAcceptExSockaddrs>(ptr);
