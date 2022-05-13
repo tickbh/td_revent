@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use std::os::unix::io::RawFd;
 use std::io::{self, ErrorKind};
-use {EventEntry, EventFlags, FLAG_READ, FLAG_WRITE, FLAG_ACCEPT, EventBuffer, EventLoop, RetValue};
+use {EventEntry, EventFlags, EventBuffer, EventLoop, RetValue};
 
 use libc::{timespec, time_t, c_long};
 
@@ -48,7 +48,7 @@ impl Event {
     }
 
     pub fn is_accept(&self) -> bool {
-        self.entry.ev_events.contains(FLAG_ACCEPT)
+        self.entry.ev_events.contains(EventFlags::FLAG_ACCEPT)
     }
 
     pub fn as_raw_socket(&self) -> SOCKET {
@@ -128,8 +128,8 @@ fn write_done(event_loop: &mut EventLoop, socket: SOCKET) {
     // 无需写入, 则取消写入事件
     if event.buffer.write.len() == 0 {
         event.buffer.is_in_write = false;
-        event.entry.ev_events.remove(FLAG_WRITE);
-        let _ = event_loop.selector.deregister(event.as_raw_socket(), FLAG_WRITE);
+        event.entry.ev_events.remove(EventFlags::FLAG_WRITE);
+        let _ = event_loop.selector.deregister(event.as_raw_socket(), EventFlags::FLAG_WRITE);
         return;
     }
     match event.buffer.socket.write(&event.buffer.write.get_data()[..]) {
@@ -145,8 +145,8 @@ fn write_done(event_loop: &mut EventLoop, socket: SOCKET) {
             //如果写入包为空, 则表示没有数据要进行写入, 取消掉写入事件
             if event.buffer.write.empty() {
                 event.buffer.is_in_write = false;
-                event.entry.ev_events.remove(FLAG_WRITE);
-                let _ = event_loop.selector.deregister(event.as_raw_socket(), FLAG_WRITE);
+                event.entry.ev_events.remove(EventFlags::FLAG_WRITE);
+                let _ = event_loop.selector.deregister(event.as_raw_socket(), EventFlags::FLAG_WRITE);
             }
         },
         Err(err) => {
@@ -198,11 +198,11 @@ impl Selector {
 
         for i in 0..cnt {
             let e = event.selector.evts.sys_events[i];
-            if e.filter == EventFilter::EVFILT_READ {
-                read_done(event, e.ident as SOCKET);
+            if e.filter()? == EventFilter::EVFILT_READ {
+                read_done(event, e.ident() as SOCKET);
             }
-            if e.filter == EventFilter::EVFILT_WRITE {
-                write_done(event, e.ident as SOCKET);
+            if e.filter()? == EventFilter::EVFILT_WRITE {
+                write_done(event, e.ident() as SOCKET);
             }
         }
         Ok(cnt)
@@ -236,38 +236,31 @@ impl Selector {
         for i in 0..cnt {
             let e = self.evts.sys_events[i];
             let mut ev_flag = EventFlags::empty();
-            if e.filter == EventFilter::EVFILT_READ {
-                ev_flag = ev_flag | FLAG_READ;
+            if e.filter()? == EventFilter::EVFILT_READ {
+                ev_flag = ev_flag | EventFlags::FLAG_READ;
             }
-            if e.filter == EventFilter::EVFILT_WRITE {
-                ev_flag = ev_flag | FLAG_WRITE;
+            if e.filter()? == EventFilter::EVFILT_WRITE {
+                ev_flag = ev_flag | EventFlags::FLAG_WRITE;
             }
 
-            evts.push(EventEntry::new_evfd(e.ident as i32, ev_flag));
+            evts.push(EventEntry::new_evfd(e.ident() as i32, ev_flag));
         }
         Ok(cnt as u32)
     }
 
     fn ev_register(&mut self, fd: RawFd, filter: EventFilter, enable: bool) {
-        let mut flags = EV_ADD;
+        let mut flags = EventFlag::EV_ADD;
         if enable {
-            flags = flags | EV_ENABLE;
+            flags = flags | EventFlag::EV_ENABLE;
         } else {
-            flags = flags | EV_DISABLE;
+            flags = flags | EventFlag::EV_DISABLE;
         }
 
         self.ev_push(fd, filter, flags);
     }
 
     fn ev_push(&mut self, fd: RawFd, filter: EventFilter, flags: EventFlag) {
-        self.evts.sys_events.push(KEvent {
-            ident: fd as ::libc::uintptr_t,
-            filter: filter,
-            flags: flags,
-            fflags: FilterFlag::empty(),
-            data: 0,
-            udata: 0,
-        });
+        self.evts.sys_events.push(KEvent::new(fd as ::libc::uintptr_t, filter, flags, FilterFlag::empty(), 0, 0));
     }
 
     fn flush_changes(&mut self) -> io::Result<()> {
@@ -281,7 +274,7 @@ impl Selector {
     }
 
     fn register(&mut self, socket: SOCKET, ev_events: EventFlags) -> io::Result<()> {
-        if ev_events.contains(FLAG_READ) {
+        if ev_events.contains(EventFlags::FLAG_READ) {
             self.ev_register(
                 socket as RawFd,
                 EventFilter::EVFILT_READ,
@@ -289,7 +282,7 @@ impl Selector {
             );
         }  
 
-        if ev_events.contains(FLAG_WRITE) {
+        if ev_events.contains(EventFlags::FLAG_WRITE) {
             self.ev_register(
                 socket as RawFd,
                 EventFilter::EVFILT_WRITE,
@@ -301,11 +294,11 @@ impl Selector {
 
 
     fn deregister(&mut self, socket: SOCKET, ev_events: EventFlags) -> io::Result<()> {
-        if ev_events.contains(FLAG_READ) {
-            self.ev_push(socket as RawFd, EventFilter::EVFILT_READ, EV_DELETE);
+        if ev_events.contains(EventFlags::FLAG_READ) {
+            self.ev_push(socket as RawFd, EventFilter::EVFILT_READ, EventFlag::EV_DELETE);
         }
-        if ev_events.contains(FLAG_WRITE) {
-            self.ev_push(socket as RawFd, EventFilter::EVFILT_WRITE, EV_DELETE);
+        if ev_events.contains(EventFlags::FLAG_WRITE) {
+            self.ev_push(socket as RawFd, EventFilter::EVFILT_WRITE, EventFlag::EV_DELETE);
         }
         self.flush_changes()
     }
@@ -398,9 +391,9 @@ impl Selector {
         if event.buffer.is_in_write || event.buffer.write.empty() {
             return Ok(0);
         }
-        event.entry.ev_events.insert(FLAG_WRITE);
+        event.entry.ev_events.insert(EventFlags::FLAG_WRITE);
         event.buffer.is_in_write = true;
-        event_loop.selector.register(event.as_raw_socket(), FLAG_WRITE)?;
+        event_loop.selector.register(event.as_raw_socket(), EventFlags::FLAG_WRITE)?;
         Ok(0)
     }
 }
